@@ -1,0 +1,70 @@
+name: Release Package
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+-[a-zA-Z0-9]*'
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+
+    - name: Install npm dependencies
+      run: npm install
+      working-directory: src/Umbraco.Community.RazorSearch/Client
+
+    - name: Build npm package
+      run: npm run build
+      working-directory: src/Umbraco.Community.RazorSearch/Client
+      env:
+        RELEASE_VERSION: ${{ github.ref_name }}
+
+    - name: Build & Pack
+      run: dotnet pack src\Umbraco.Community.RazorSearch\Umbraco.Community.RazorSearch.csproj -c Release /p:Version=${{github.ref_name}}
+
+    - name: Push to NuGet
+      run: dotnet nuget push **\*.nupkg -k ${{secrets.NUGET_API_KEY}} -s https://api.nuget.org/v3/index.json
+
+    - name: Generate changelog
+      id: changelog
+      shell: pwsh
+      run: |
+        $currentTag = "${{github.ref_name}}"
+        $previousTag = git tag --sort=-v:refname | Where-Object { $_ -ne $currentTag } | Select-Object -First 1
+        if ($previousTag) {
+          $log = git log "$previousTag..$currentTag" --pretty=format:"- %s" --no-merges
+        } else {
+          $log = git log --pretty=format:"- %s" --no-merges
+        }
+        $log = $log -join "`n"
+        $log | Set-Content -Path "CHANGELOG.md"
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{github.ref_name}}
+        name: ${{github.ref_name}}
+        body_path: CHANGELOG.md
+        prerelease: ${{ contains(github.ref_name, '-') }}
+        files: |
+          **/*.nupkg

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://marketplace.umbraco.com/umbraco-marketplace-schema.json",
+  "AuthorDetails": {
+    "Name": "Soren Kottal",
+    "ImageUrl": "https://github.com/skttl.png",
+    "Url": "https://github.com/skttl",
+    "Contributors": [],
+    "SyncContributorsFromRepository": true
+  },
+  "Category": "Developer Tools",
+  "Description": "Search rendered Umbraco pages with Umbraco.Cms.Search.",
+  "IssueTrackerUrl": "https://github.com/skttl/umbraco-razor-search/issues",
+  "LicenseTypes": [
+    "Free"
+  ],
+  "PackageType": "Package",
+  "Tags": [
+    "search",
+    "umbraco",
+    "razor",
+    "full-text-search"
+  ],
+  "Title": "RazorSearch",
+  "Screenshots": []
+}

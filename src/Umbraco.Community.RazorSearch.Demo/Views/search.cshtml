@@ -1,0 +1,97 @@
+﻿@inherits Umbraco.Cms.Web.Common.Views.UmbracoViewPage<ContentModels.Search>
+
+@using Clean.Core.Models.ViewModels
+@using ContentModels = Umbraco.Cms.Web.Common.PublishedModels
+@using Clean.Core.Extensions
+@using Umbraco.Community.RazorSearch
+@using Umbraco.Community.RazorSearch.Models
+@using Umbraco.Extensions
+@inject IRazorSearchService razorSearchService
+
+@{
+    Layout = "master.cshtml";
+    var searchQuery = Context.Request.Query["q"].ToString();
+    var docTypesToIgnore = new[] { Category.ModelTypeAlias, CategoryList.ModelTypeAlias, Error.ModelTypeAlias, Search.ModelTypeAlias, XMlsitemap.ModelTypeAlias };
+    IRazorSearchResult? searchResult = null;
+
+    if (!string.IsNullOrWhiteSpace(searchQuery))
+    {
+        var search = new RazorSearch(searchQuery)
+            .UnderRoot(Model.Root().Key)
+            .ExcludeContentTypes(docTypesToIgnore);
+
+        string? culture = Model.GetCultureFromDomains();
+        if (!string.IsNullOrWhiteSpace(culture))
+        {
+            search.InCulture(culture.ToLowerInvariant());
+        }
+
+        searchResult = await razorSearchService.SearchAsync(search);
+    }
+}
+
+@await Html.PartialAsync("~/Views/Partials/pageHeader.cshtml", new PageHeaderViewModel(Model.Name, Model.Title, Model.Subtitle, Model.MainImage))
+
+<div class="container">
+    <form action="@Model.Url()" method="GET" id="search">
+        <div class="row">
+            <div class="col-lg-8 col-md-10 mx-auto">
+                <div class="form-group controls">
+                    <input type="text" class="form-control col-xs-6" placeholder="@Umbraco.GetDictionaryValue("Search.Placeholder")" name="q" value="@searchQuery" />
+                </div>
+            </div>
+            <div class="col-lg-8 col-md-10 mx-auto my-3">
+                <div class="form-group">
+                    <button class="btn btn-primary search-button float-end">@Umbraco.GetDictionaryValue("Search.SearchButton") <i class="fa fa-search"></i></button>
+                </div>
+            </div>
+            <div class="col-lg-8 col-md-10 mx-auto">
+                @if (!string.IsNullOrWhiteSpace(searchQuery))
+                {
+                    long resultCount = searchResult?.Total ?? 0;
+                    string resultsText = Umbraco.GetDictionaryValue("Search.Results") ?? "{0} results for {1}";
+                    @Html.Raw(string.Format(resultsText, resultCount, searchQuery.StripHtml()))
+                    if (resultCount > 0)
+                    {
+                        foreach (IRazorSearchResultItem result in searchResult!.Items)
+                        {
+                            if (result.Content is null || string.IsNullOrWhiteSpace(result.Url))
+                            {
+                                continue;
+                            }
+
+                            <div class="post-preview">
+                                <a href="@result.Url">
+                                    <h2 class="post-title">
+                                        @result.Title
+                                    </h2>
+                                </a>
+                                @if (result.Content is IArticleControls article && ((result.Content.HasProperty("author") && result.Content.HasValue("author"))
+                               || (result.Content.HasProperty("articleDate") && result.Content.HasValue("articleDate") && result.Content.Value<DateTime>("articleDate") > DateTime.MinValue)))
+                                {
+                                    var author = article.Author;
+                                    <p class="post-meta">
+                                        @Umbraco.GetDictionaryValue("Article.Posted")
+                                        @Umbraco.GetDictionaryValue("Article.By")@Html.Raw("&nbsp;")@(author?.Name ?? string.Empty)
+
+                                        @if (article.ArticleDate > DateTime.MinValue)
+                                        {
+                                            @Umbraco.GetDictionaryValue("Article.On")
+
+                                            @:&nbsp;@(article.ArticleDate.ToString("MMMM dd, yyyy"))
+                                        }
+                                    </p>
+                                }
+                                @if (string.IsNullOrWhiteSpace(result.SummaryHtml) is false)
+                                {
+                                    <div class="post-subtitle">@Html.Raw(result.SummaryHtml)</div>
+                                }
+                            </div>
+                        }
+                        <hr>
+                    }
+                }
+            </div>
+        </div>
+    </form>
+</div>

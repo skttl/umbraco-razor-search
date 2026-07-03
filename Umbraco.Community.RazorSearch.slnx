@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Umbraco.Community.RazorSearch.Demo/Umbraco.Community.RazorSearch.Demo.csproj" />
+    <Project Path="src/Umbraco.Community.RazorSearch/Umbraco.Community.RazorSearch.csproj" />
+  </Folder>
+</Solution>

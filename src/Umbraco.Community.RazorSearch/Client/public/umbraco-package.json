@@ -1,0 +1,12 @@
+{
+  "name": "RazorSearch",
+  "version": "0.1.0",
+  "extensions": [
+    {
+      "name": "RazorSearch Bundle",
+      "alias": "RazorSearch.Bundle",
+      "type": "bundle",
+      "js": "/App_Plugins/Umbraco.Community.RazorSearch/razor-search-bundle.js"
+    }
+  ]
+}
