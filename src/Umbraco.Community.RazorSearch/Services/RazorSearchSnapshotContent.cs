@@ -12,6 +12,8 @@ internal sealed record RazorSearchSnapshotContent
 
     public required string CombinedText { get; init; }
 
+    public required string SnapshotHtml { get; init; }
+
     public required string FinalUrl { get; init; }
 
     public required string ContentHash { get; init; }

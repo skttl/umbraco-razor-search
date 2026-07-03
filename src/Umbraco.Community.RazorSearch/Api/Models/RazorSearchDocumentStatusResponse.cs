@@ -4,6 +4,8 @@ public sealed class RazorSearchDocumentStatusResponse
 {
     public Guid DocumentId { get; init; }
 
+    public string? DocumentName { get; init; }
+
     public string State { get; init; } = "unknown";
 
     public bool IncludeDescendants { get; init; }
@@ -17,4 +19,10 @@ public sealed class RazorSearchDocumentStatusResponse
     public DateTimeOffset UpdatedAt { get; init; }
 
     public string? Message { get; init; }
+
+    public IReadOnlyCollection<RazorSearchQueueJobResponse> Jobs { get; init; } = [];
+
+    public IReadOnlyCollection<RazorSearchDocumentSnapshotResponse> Snapshots { get; init; } = [];
+
+    public IReadOnlyCollection<RazorSearchDocumentIndexEntryResponse> IndexedEntries { get; init; } = [];
 }

@@ -47,31 +47,28 @@ public sealed class RazorSearchSnapshotContentIndexer(
                 .Select(x => x!)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        RazorSearchIndexedVariant[] successfulVariants = RazorSearchSnapshotIndexProjection
+            .ProjectSuccessfulVariants(snapshots, requestedCultures)
+            .ToArray();
+
+        if (successfulVariants.Length == 0)
+        {
+            return [];
+        }
+
         var indexFields = new List<IndexField>();
 
-        foreach (IGrouping<(string Culture, string Segment), RazorSearchSnapshot> snapshotGroup in successfulSnapshots
-                     .Where(x => ShouldIncludeCulture(x.Culture, requestedCultures))
-                     .GroupBy(x => (NormalizeVariant(x.Culture), NormalizeVariant(x.Segment))))
+        foreach (RazorSearchIndexedVariant variant in successfulVariants)
         {
-            string culture = snapshotGroup.Key.Culture;
-            string segment = snapshotGroup.Key.Segment;
-            string? variantCulture = DenormalizeVariant(culture);
-            string? variantSegment = DenormalizeVariant(segment);
-
-            if (contentFilter.IsExcluded(content, variantCulture, variantSegment, published))
+            if (contentFilter.IsExcluded(content, variant.Culture, variant.Segment, published))
             {
                 continue;
             }
 
-            string[] titles = CollectDistinct(snapshotGroup.Select(x => x.TitleText));
-            string[] summaries = CollectDistinct(snapshotGroup.Select(x => x.SummaryText));
-            string[] headings = CollectDistinct(snapshotGroup.Select(x => x.HeadingText));
-            string[] bodies = CollectDistinct(snapshotGroup.Select(x => x.BodyText));
-
-            AppendIndexField(indexFields, Constants.TitleFieldName, variantCulture, variantSegment, textsR1: titles);
-            AppendIndexField(indexFields, Constants.SummaryFieldName, variantCulture, variantSegment, textsR2: summaries);
-            AppendIndexField(indexFields, Constants.HeadingFieldName, variantCulture, variantSegment, textsR2: headings);
-            AppendIndexField(indexFields, Constants.ContentFieldName, variantCulture, variantSegment, texts: bodies);
+            AppendIndexField(indexFields, Constants.TitleFieldName, variant.Culture, variant.Segment, textsR1: variant.Titles);
+            AppendIndexField(indexFields, Constants.SummaryFieldName, variant.Culture, variant.Segment, textsR2: variant.Summaries);
+            AppendIndexField(indexFields, Constants.HeadingFieldName, variant.Culture, variant.Segment, textsR2: variant.Headings);
+            AppendIndexField(indexFields, Constants.ContentFieldName, variant.Culture, variant.Segment, texts: variant.Bodies);
         }
 
         return indexFields;
@@ -113,17 +110,4 @@ public sealed class RazorSearchSnapshotContentIndexer(
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToArray();
 
-    private static bool ShouldIncludeCulture(string? snapshotCulture, HashSet<string>? requestedCultures)
-    {
-        if (requestedCultures is null || requestedCultures.Count == 0)
-        {
-            return true;
-        }
-
-        return requestedCultures.Contains(NormalizeVariant(snapshotCulture));
-    }
-
-    private static string NormalizeVariant(string? value) => value ?? string.Empty;
-
-    private static string? DenormalizeVariant(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
 }

@@ -159,6 +159,7 @@ public sealed class EfCoreRazorSearchSnapshotStore(IEFCoreScopeProvider<RazorSea
                 entity.Segment = NormalizeNullable(snapshot.Segment);
                 entity.Renderer = snapshot.Renderer;
                 entity.Snapshot = snapshot.Snapshot;
+                entity.SnapshotHtml = snapshot.SnapshotHtml;
                 entity.Checksum = snapshot.Checksum;
                 entity.FinalUrl = snapshot.FinalUrl;
                 entity.TitleText = snapshot.TitleText;
@@ -261,6 +262,7 @@ internal static class RazorSearchSnapshotStoreMappings
         Segment = DenormalizeNullable(entity.Segment),
         Renderer = entity.Renderer,
         Snapshot = entity.Snapshot,
+        SnapshotHtml = entity.SnapshotHtml,
         Checksum = entity.Checksum,
         FinalUrl = entity.FinalUrl,
         TitleText = entity.TitleText,

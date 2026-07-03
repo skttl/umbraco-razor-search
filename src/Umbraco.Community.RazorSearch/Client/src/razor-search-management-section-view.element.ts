@@ -1,27 +1,33 @@
 import { UMB_NOTIFICATION_CONTEXT } from "@umbraco-cms/backoffice/notification";
+import { umbOpenModal } from "@umbraco-cms/backoffice/modal";
 import { UmbLitElement } from "@umbraco-cms/backoffice/lit-element";
 import { css, html, nothing } from "@umbraco-cms/backoffice/external/lit";
 import {
   RazorSearchManagementClient,
-  type QueueRazorSearchPublishedContentResponse,
-  type RazorSearchDocumentStatusResponse,
+  type RazorSearchQueueBatchDetailsResponse,
+  type RazorSearchQueueStatusStreamHandle,
+  type RazorSearchQueueJobResponse,
   type RazorSearchQueueStatusResponse,
 } from "./razor-search-management.client.js";
+import {
+  RAZOR_SEARCH_QUEUE_DETAILS_MODAL,
+  type RazorSearchQueueBatchFilter,
+} from "./razor-search-queue-details-modal.token.js";
+import { RAZOR_SEARCH_QUEUE_MODAL } from "./razor-search-queue-modal.token.js";
+import { RAZOR_SEARCH_STATUS_MODAL } from "./razor-search-status-modal.token.js";
 
 type AsyncState = "idle" | "loading";
 
 export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
   static properties = {
     _documentId: { state: true },
-    _includeDescendants: { state: true },
-    _documentStatus: { state: true },
     _documentLookupMessage: { state: true },
     _documentLookupState: { state: true },
     _queueState: { state: true },
     _queueStatus: { state: true },
     _queueStatusState: { state: true },
+    _queueDetailsState: { state: true },
     _backfillState: { state: true },
-    _backfillResult: { state: true },
     _maintenanceMessage: { state: true },
   };
 
@@ -38,27 +44,6 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
       max-width: 1240px;
     }
 
-    .hero {
-      display: grid;
-      gap: var(--uui-size-space-3);
-      padding: var(--uui-size-space-5);
-      border-radius: calc(var(--uui-border-radius) * 1.5);
-      background:
-        radial-gradient(circle at top right, rgba(61, 179, 113, 0.18), transparent 38%),
-        linear-gradient(135deg, rgba(22, 103, 86, 0.08), rgba(7, 52, 74, 0.02));
-      border: 1px solid color-mix(in srgb, var(--uui-color-divider-emphasis) 30%, transparent);
-    }
-
-    .eyebrow {
-      margin: 0;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      font-size: 0.78rem;
-      color: var(--uui-color-text-alt);
-    }
-
-    .hero h2,
-    .hero p,
     .muted,
     .hint-list {
       margin: 0;
@@ -106,6 +91,12 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
       font-size: 1.1rem;
     }
 
+    .status-badge {
+      position: static;
+      align-self: flex-start;
+      flex-shrink: 0;
+    }
+
     .progress-shell {
       display: grid;
       gap: var(--uui-size-space-2);
@@ -136,6 +127,11 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
       grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
     }
 
+    .metrics--queue {
+      gap: var(--uui-size-space-2);
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
     .metric {
       border: 1px solid var(--uui-color-divider);
       border-radius: var(--uui-border-radius);
@@ -143,6 +139,35 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
       background: var(--uui-color-surface-alt);
       display: grid;
       gap: var(--uui-size-space-2);
+      min-width: 0;
+    }
+
+    .metrics--queue .metric {
+      padding: var(--uui-size-space-3);
+    }
+
+    .metric-button {
+      width: 100%;
+      border: 0;
+      padding: 0;
+      margin: 0;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      display: grid;
+      gap: var(--uui-size-space-2);
+    }
+
+    .metric-button:disabled {
+      cursor: default;
+      opacity: 0.65;
+    }
+
+    .metric-button:not(:disabled):hover .metric-label,
+    .metric-button:not(:disabled):focus-visible .metric-label {
+      color: var(--uui-color-interactive-emphasis);
     }
 
     .metric-label {
@@ -163,11 +188,9 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
       gap: var(--uui-size-space-3);
     }
 
-    .toggle {
-      display: inline-flex;
-      gap: var(--uui-size-space-2);
-      align-items: center;
+    .field-label {
       font-size: 0.95rem;
+      font-weight: 600;
     }
 
     .status-panel {
@@ -197,38 +220,47 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
         grid-template-columns: 1fr;
       }
     }
+
+    @media (max-width: 720px) {
+      .metrics--queue {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 520px) {
+      .metrics--queue {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
   `;
 
   readonly #managementClient = new RazorSearchManagementClient(this);
   #notificationContext?: {
     peek: (...args: any[]) => unknown;
   };
-  #queueStatusPollHandle?: number;
+  #queueStatusStream?: RazorSearchQueueStatusStreamHandle;
+  #queueStatusReconnectHandle?: number;
 
   declare _documentId: string;
-  declare _includeDescendants: boolean;
-  declare _documentStatus: RazorSearchDocumentStatusResponse | undefined;
   declare _documentLookupMessage: string | undefined;
   declare _documentLookupState: AsyncState;
   declare _queueState: AsyncState;
   declare _queueStatus: RazorSearchQueueStatusResponse | undefined;
   declare _queueStatusState: AsyncState;
+  declare _queueDetailsState: AsyncState;
   declare _backfillState: AsyncState;
-  declare _backfillResult: QueueRazorSearchPublishedContentResponse | undefined;
   declare _maintenanceMessage: string | undefined;
 
   constructor() {
     super();
     this._documentId = "";
-    this._includeDescendants = true;
-    this._documentStatus = undefined;
     this._documentLookupMessage = undefined;
     this._documentLookupState = "idle";
     this._queueState = "idle";
     this._queueStatus = undefined;
     this._queueStatusState = "idle";
+    this._queueDetailsState = "idle";
     this._backfillState = "idle";
-    this._backfillResult = undefined;
     this._maintenanceMessage = undefined;
 
     this.consumeContext(UMB_NOTIFICATION_CONTEXT, (instance) => {
@@ -239,28 +271,17 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
   override connectedCallback() {
     super.connectedCallback();
     void this.#refreshQueueStatus(true);
-    this.#startQueueStatusPolling();
+    void this.#startQueueStatusFeed();
   }
 
   override disconnectedCallback() {
-    this.#stopQueueStatusPolling();
+    this.#stopQueueStatusStream();
     super.disconnectedCallback();
   }
 
   override render() {
     return html`
       <div class="layout">
-        <section class="hero">
-          <div>
-            <p class="eyebrow">Queue monitor</p>
-            <h2>RazorSearch operations</h2>
-          </div>
-          <p>
-            Monitor live render queue activity, run site-wide backfills, and inspect
-            a single document when you need to requeue or troubleshoot indexing.
-          </p>
-        </section>
-
         <section class="grid grid--wide">
           <uui-box headline="Live queue status">
             ${this.#renderQueueStatus()}
@@ -301,39 +322,28 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
               ${this._maintenanceMessage
                 ? html`<div class="notice">${this._maintenanceMessage}</div>`
                 : nothing}
-              ${this._backfillResult
-                ? this.#renderBackfillResult(this._backfillResult)
-                : html`
-                    <p class="muted">
-                      The rebuild call only queues work. Progress appears in the live
-                      queue card while the background renderer drains the batch.
-                    </p>
-                  `}
+              <p class="muted">
+                The backfill action only queues work. Progress appears in the live
+                queue card while the background renderer drains the batch.
+              </p>
             </div>
           </uui-box>
 
           <uui-box headline="Single document">
             <div class="stack">
               <div class="field-grid">
-                <uui-input
-                  label="Document ID"
-                  placeholder="Enter a document GUID"
-                  .value=${this._documentId}
-                  @input=${this.#onDocumentIdInput}>
-                </uui-input>
-                <label class="toggle">
-                  <input
-                    type="checkbox"
-                    .checked=${this._includeDescendants}
-                    @change=${this.#onIncludeDescendantsChange} />
-                  <span>Include descendants when queueing</span>
-                </label>
+                <span class="field-label">Document</span>
+                <umb-input-document
+                  max="1"
+                  .selection=${this._documentId ? [this._documentId] : []}
+                  @change=${this.#onDocumentSelectionChange}>
+                </umb-input-document>
               </div>
               <div class="actions">
                 <uui-button
                   look="outline"
                   label="Load status"
-                  ?disabled=${this._documentLookupState === "loading"}
+                  ?disabled=${this._documentLookupState === "loading" || !this.#hasDocumentId()}
                   @click=${this.#lookupDocumentStatus}>
                   Load status
                 </uui-button>
@@ -341,21 +351,19 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
                   color="positive"
                   look="primary"
                   label="Queue document"
-                  ?disabled=${this._queueState === "loading"}
+                  ?disabled=${this._queueState === "loading" || !this.#hasDocumentId()}
                   @click=${this.#queueDocument}>
                   Queue document
                 </uui-button>
               </div>
-              ${this._documentStatus
-                ? this.#renderDocumentStatus(this._documentStatus)
-                : this._documentLookupMessage
-                  ? html`<div class="notice">${this._documentLookupMessage}</div>`
-                  : html`
-                      <p class="muted">
-                        Enter a document ID to inspect the current RazorSearch job
-                        state or queue it manually.
-                      </p>
-                    `}
+              ${this._documentLookupMessage
+                ? html`<div class="notice">${this._documentLookupMessage}</div>`
+                : html`
+                    <p class="muted">
+                      Pick a document to inspect the current RazorSearch job
+                      state or queue it manually.
+                    </p>
+                  `}
             </div>
           </uui-box>
         </section>
@@ -394,7 +402,7 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
               "Queue a document or run a published content backfill to start work."}
             </span>
           </div>
-          <uui-badge color=${this.#badgeColor(status?.state ?? "idle")}>
+          <uui-badge class="status-badge" color=${this.#badgeColor(status?.state ?? "idle")}>
             ${status?.state ?? "idle"}
           </uui-badge>
         </div>
@@ -416,32 +424,30 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
           </span>
         </div>
 
-        <div class="metrics">
+        <div class="metrics metrics--queue">
           <div class="metric">
-            <span class="metric-label">Batch total</span>
-            <span class="metric-value">${total}</span>
+            ${this.#renderQueueMetric("Batch total", total, "all")}
           </div>
           <div class="metric">
-            <span class="metric-label">Queued</span>
-            <span class="metric-value">${status?.pendingJobCount ?? 0}</span>
+            ${this.#renderQueueMetric("Queued", status?.pendingJobCount ?? 0, "queued")}
           </div>
           <div class="metric">
-            <span class="metric-label">Running</span>
-            <span class="metric-value">${status?.runningJobCount ?? 0}</span>
+            ${this.#renderQueueMetric("Running", status?.runningJobCount ?? 0, "running")}
           </div>
           <div class="metric">
-            <span class="metric-label">Completed</span>
-            <span class="metric-value">${completed}</span>
+            ${this.#renderQueueMetric("Completed", completed, "completed")}
           </div>
           <div class="metric">
-            <span class="metric-label">Failed</span>
-            <span class="metric-value">${failed}</span>
+            ${this.#renderQueueMetric("Failed", failed, "failed")}
           </div>
           <div class="metric">
-            <span class="metric-label">Cancelled</span>
-            <span class="metric-value">${cancelled}</span>
+            ${this.#renderQueueMetric("Cancelled", cancelled, "cancelled")}
           </div>
         </div>
+
+        ${status?.currentJob
+          ? this.#renderCurrentJob(status.currentJob)
+          : nothing}
 
         <p class="muted">
           Updated: ${this.#formatDate(status?.updatedAt) ?? "Unknown"}
@@ -450,71 +456,46 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
     `;
   }
 
-  #renderDocumentStatus(status: RazorSearchDocumentStatusResponse) {
+  #renderQueueMetric(
+    label: string,
+    value: number,
+    filter: RazorSearchQueueBatchFilter,
+  ) {
     return html`
-      <div class="status-panel">
-        <div class="status-row">
-          <strong>State:</strong>
-          <uui-badge color=${this.#badgeColor(status.state)}>${status.state}</uui-badge>
-          ${status.message ? html`<span>${status.message}</span>` : nothing}
-        </div>
-        <div class="metrics">
-          <div class="metric">
-            <span class="metric-label">Pending</span>
-            <span class="metric-value">${status.pendingDocumentCount}</span>
-          </div>
-          <div class="metric">
-            <span class="metric-label">Completed</span>
-            <span class="metric-value">${status.completedDocumentCount}</span>
-          </div>
-          <div class="metric">
-            <span class="metric-label">Failed</span>
-            <span class="metric-value">${status.failedDocumentCount}</span>
-          </div>
-        </div>
-        <p class="muted">
-          Includes descendants: ${status.includeDescendants ? "Yes" : "No"}
-        </p>
-        <p class="muted">
-          Updated: ${this.#formatDate(status.updatedAt) ?? "Unknown"}
-        </p>
-      </div>
+      <button
+        type="button"
+        class="metric-button"
+        ?disabled=${this._queueDetailsState === "loading"}
+        @click=${() => this.#openQueueBatchDetails(filter)}>
+        <span class="metric-label">${label}</span>
+        <span class="metric-value">${value}</span>
+      </button>
     `;
   }
 
-  #renderBackfillResult(result: QueueRazorSearchPublishedContentResponse) {
+  #renderCurrentJob(job: RazorSearchQueueJobResponse) {
+    const label = job.state === "running" ? "Currently rendering" : "Next in queue";
+    const title = job.documentName?.trim() || job.documentId;
+
     return html`
       <div class="status-panel">
         <div class="status-row">
-          <strong>State:</strong>
-          <uui-badge color=${this.#badgeColor(result.state)}>${result.state}</uui-badge>
-          <span>${result.message}</span>
+          <strong>${label}</strong>
+          <uui-badge class="status-badge" color=${this.#badgeColor(job.state)}>
+            ${job.state}
+          </uui-badge>
         </div>
-        <div class="metrics">
-          <div class="metric">
-            <span class="metric-label">Discovered</span>
-            <span class="metric-value">${result.discoveredDocumentCount}</span>
-          </div>
-          <div class="metric">
-            <span class="metric-label">Processed</span>
-            <span class="metric-value">${result.processedDocumentCount}</span>
-          </div>
-          <div class="metric">
-            <span class="metric-label">Queued routes</span>
-            <span class="metric-value">${result.queuedRouteCount}</span>
-          </div>
-          <div class="metric">
-            <span class="metric-label">Duplicate routes</span>
-            <span class="metric-value">${result.duplicateRouteCount}</span>
-          </div>
+        <div class="stack">
+          <strong>${title}</strong>
+          <span class="muted">${job.route}</span>
+          <span class="muted">
+            Renderer: ${job.renderer}${job.culture ? ` • Culture: ${job.culture}` : ""}
+          </span>
+          <span class="muted">
+            Last update: ${this.#formatDate(job.updatedAt) ?? "Unknown"}
+          </span>
+          ${job.errorMessage ? html`<div class="notice">${job.errorMessage}</div>` : nothing}
         </div>
-        <p class="muted">
-          Max documents: ${result.maxDocumentCount}. Skipped documents:
-          ${result.skippedDocumentCount}.
-        </p>
-        <p class="muted">
-          Queued: ${this.#formatDate(result.queuedAt) ?? "Unknown"}
-        </p>
       </div>
     `;
   }
@@ -532,11 +513,15 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
       );
 
       if (status) {
-        this._documentStatus = status;
+        await umbOpenModal(this, RAZOR_SEARCH_STATUS_MODAL, {
+          data: {
+            headline: `RazorSearch status${status.documentName ? `: ${status.documentName}` : ""}`,
+            status,
+          },
+        }).catch(() => undefined);
         return;
       }
 
-      this._documentStatus = undefined;
       this._documentLookupMessage =
         "The document status lookup completed, but no readable status payload was returned.";
     } finally {
@@ -549,18 +534,27 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
       return;
     }
 
+    const modalValue = await umbOpenModal(this, RAZOR_SEARCH_QUEUE_MODAL, {
+      data: {
+        headline: "Queue RazorSearch job",
+      },
+    }).catch(() => undefined);
+
+    if (!modalValue || modalValue.action === "cancel") {
+      return;
+    }
+
     this._queueState = "loading";
     try {
       const response = await this.#managementClient.queueDocument(
         this._documentId.trim(),
-        this._includeDescendants,
+        modalValue.action === "descendants",
       );
 
       if (!response) {
         return;
       }
 
-      this._documentStatus = response.status;
       this._documentLookupMessage = undefined;
       this.#notify("positive", response.message);
       await this.#refreshQueueStatus();
@@ -571,6 +565,7 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
 
   async #backfillPublishedContent() {
     this._backfillState = "loading";
+    this._maintenanceMessage = undefined;
     try {
       const response = await this.#managementClient.backfillPublishedContent();
       if (!response) {
@@ -579,8 +574,6 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
         return;
       }
 
-      this._backfillResult = response;
-      this._maintenanceMessage = response.message;
       this.#notify("positive", response.message);
       await this.#refreshQueueStatus();
     } finally {
@@ -603,39 +596,96 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
     }
   }
 
-  #startQueueStatusPolling() {
-    this.#stopQueueStatusPolling();
-    this.#queueStatusPollHandle = window.setInterval(() => {
-      void this.#refreshQueueStatus();
-    }, 3000);
+  async #openQueueBatchDetails(filter: RazorSearchQueueBatchFilter) {
+    this._queueDetailsState = "loading";
+
+    try {
+      const details = await this.#managementClient.getQueueBatchDetails();
+      if (!details) {
+        this.#notify(
+          "warning",
+          "The queue batch details could not be loaded right now.",
+        );
+        return;
+      }
+
+      await umbOpenModal(this, RAZOR_SEARCH_QUEUE_DETAILS_MODAL, {
+        data: {
+          headline: this.#queueBatchHeadline(details),
+          filter,
+          details,
+        },
+      }).catch(() => undefined);
+    } finally {
+      this._queueDetailsState = "idle";
+    }
   }
 
-  #stopQueueStatusPolling() {
-    if (this.#queueStatusPollHandle === undefined) {
+  async #startQueueStatusFeed() {
+    this.#stopQueueStatusStream();
+    this.#clearQueueStatusReconnect();
+
+    const stream = await this.#managementClient.createQueueStatusStream(
+      (status) => {
+        this._queueStatus = status;
+        this._queueStatusState = "idle";
+      },
+      () => {
+        this.#stopQueueStatusStream();
+        this.#scheduleQueueStatusReconnect();
+      },
+    );
+
+    if (!stream) {
+      this.#scheduleQueueStatusReconnect();
       return;
     }
 
-    window.clearInterval(this.#queueStatusPollHandle);
-    this.#queueStatusPollHandle = undefined;
+    this.#queueStatusStream = stream;
   }
 
-  #onDocumentIdInput(event: Event) {
-    const target = event.target as HTMLInputElement | null;
-    this._documentId = target?.value ?? "";
+  #stopQueueStatusStream() {
+    this.#clearQueueStatusReconnect();
+    this.#queueStatusStream?.close();
+    this.#queueStatusStream = undefined;
+  }
+
+  #scheduleQueueStatusReconnect() {
+    if (this.#queueStatusReconnectHandle !== undefined || !this.isConnected) {
+      return;
+    }
+
+    this.#queueStatusReconnectHandle = window.setTimeout(() => {
+      this.#queueStatusReconnectHandle = undefined;
+      void this.#startQueueStatusFeed();
+    }, 3000);
+  }
+
+  #clearQueueStatusReconnect() {
+    if (this.#queueStatusReconnectHandle === undefined) {
+      return;
+    }
+
+    window.clearTimeout(this.#queueStatusReconnectHandle);
+    this.#queueStatusReconnectHandle = undefined;
+  }
+
+  #onDocumentSelectionChange(event: Event) {
+    const target = event.target as (EventTarget & { selection?: string[] }) | null;
+    this._documentId = target?.selection?.[0] ?? "";
     this._documentLookupMessage = undefined;
   }
 
-  #onIncludeDescendantsChange(event: Event) {
-    const target = event.target as HTMLInputElement | null;
-    this._includeDescendants = target?.checked ?? false;
+  #hasDocumentId() {
+    return !!this._documentId.trim();
   }
 
   #ensureDocumentId(): boolean {
-    if (this._documentId.trim()) {
+    if (this.#hasDocumentId()) {
       return true;
     }
 
-    this.#notify("warning", "Enter a document ID before running this action.");
+    this.#notify("warning", "Pick a document before running this action.");
     return false;
   }
 
@@ -667,6 +717,16 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
     }
 
     return "default";
+  }
+
+  #queueBatchHeadline(details: RazorSearchQueueBatchDetailsResponse) {
+    if (details.totalJobCount === 0) {
+      return "RazorSearch queue items";
+    }
+
+    return details.state === "idle"
+      ? "Last RazorSearch batch"
+      : "Current RazorSearch batch";
   }
 
   #formatDate(value?: string) {

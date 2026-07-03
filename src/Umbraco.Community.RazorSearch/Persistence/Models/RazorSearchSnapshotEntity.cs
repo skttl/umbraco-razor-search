@@ -16,6 +16,8 @@ internal sealed class RazorSearchSnapshotEntity
 
     public string Snapshot { get; set; } = string.Empty;
 
+    public string? SnapshotHtml { get; set; }
+
     public string? Checksum { get; set; }
 
     public string? FinalUrl { get; set; }

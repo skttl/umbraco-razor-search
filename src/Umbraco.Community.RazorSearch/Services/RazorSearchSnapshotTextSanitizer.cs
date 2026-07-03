@@ -33,6 +33,7 @@ internal static partial class RazorSearchSnapshotTextSanitizer
             HeadingText = headingText,
             BodyText = bodyText,
             CombinedText = combinedText,
+            SnapshotHtml = html,
             FinalUrl = resolvedFinalUrl,
             ContentHash = ComputeChecksum(string.Join("\n||\n", new[] { titleText, summaryText, headingText, bodyText, resolvedFinalUrl })),
         };

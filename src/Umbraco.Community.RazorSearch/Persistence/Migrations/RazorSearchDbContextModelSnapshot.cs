@@ -45,6 +45,7 @@ internal sealed class RazorSearchDbContextModelSnapshot : ModelSnapshot
                 .HasMaxLength(64);
             entity.Property<string>("Snapshot")
                 .IsRequired();
+            entity.Property<string?>("SnapshotHtml");
             entity.Property<string?>("SummaryText");
             entity.Property<string?>("TitleText")
                 .HasMaxLength(512);

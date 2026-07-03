@@ -1,6 +1,6 @@
 namespace Umbraco.Community.RazorSearch.Api.Models;
 
-public sealed class RazorSearchQueueStatusResponse
+public sealed class RazorSearchQueueBatchDetailsResponse
 {
     public string State { get; init; } = "idle";
 
@@ -22,5 +22,5 @@ public sealed class RazorSearchQueueStatusResponse
 
     public string? Message { get; init; }
 
-    public RazorSearchQueueJobResponse? CurrentJob { get; init; }
+    public IReadOnlyCollection<RazorSearchQueueJobResponse> Jobs { get; init; } = [];
 }

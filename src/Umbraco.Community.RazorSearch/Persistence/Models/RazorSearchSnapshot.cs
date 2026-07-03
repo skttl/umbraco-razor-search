@@ -16,6 +16,8 @@ public sealed record RazorSearchSnapshot
 
     public required string Snapshot { get; init; }
 
+    public string? SnapshotHtml { get; init; }
+
     public string? Checksum { get; init; }
 
     public string? FinalUrl { get; init; }

@@ -49,7 +49,9 @@ internal sealed class FilteredRazorSearchRenderQueue(
                 Status = new RazorSearchRenderJobStatus
                 {
                     JobId = jobId,
+                    BatchId = 0,
                     ContentKey = request.ContentKey,
+                    Route = request.Route,
                     Culture = request.Culture,
                     Segment = request.Segment,
                     Renderer = renderer,

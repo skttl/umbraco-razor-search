@@ -4,7 +4,11 @@ public sealed record RazorSearchRenderJobStatus
 {
     public required Guid JobId { get; init; }
 
+    public long BatchId { get; init; }
+
     public required Guid ContentKey { get; init; }
+
+    public required string Route { get; init; }
 
     public required string Renderer { get; init; }
 

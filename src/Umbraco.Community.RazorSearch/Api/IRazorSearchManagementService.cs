@@ -11,4 +11,6 @@ public interface IRazorSearchManagementService
     Task<RazorSearchDocumentStatusResponse> GetDocumentStatusAsync(Guid documentId, CancellationToken cancellationToken);
 
     Task<RazorSearchQueueStatusResponse> GetQueueStatusAsync(CancellationToken cancellationToken);
+
+    Task<RazorSearchQueueBatchDetailsResponse> GetQueueBatchDetailsAsync(CancellationToken cancellationToken);
 }

@@ -9,15 +9,21 @@ namespace Umbraco.Community.RazorSearch.Services;
 
 internal sealed class InMemoryRazorSearchRenderQueue : IRazorSearchRenderQueue, IBackgroundRazorSearchRenderQueue
 {
+    private readonly Lock _batchLock = new();
     private readonly ConcurrentDictionary<Guid, RazorSearchRenderJob> _jobs = new();
     private readonly ConcurrentDictionary<Guid, RazorSearchRenderJobStatus> _statuses = new();
     private readonly ConcurrentDictionary<RazorSearchRenderDeduplicationKey, Guid> _activeJobs = new();
     private readonly Channel<RazorSearchRenderJob> _channel;
+    private readonly IRazorSearchQueueActivityNotifier _queueActivityNotifier;
     private readonly RazorSearchOptions _options;
+    private long _currentBatchId;
 
-    public InMemoryRazorSearchRenderQueue(IOptionsMonitor<RazorSearchOptions> options)
+    public InMemoryRazorSearchRenderQueue(
+        IOptionsMonitor<RazorSearchOptions> options,
+        IRazorSearchQueueActivityNotifier queueActivityNotifier)
     {
         _options = options.CurrentValue;
+        _queueActivityNotifier = queueActivityNotifier;
 
         _channel = _options.RenderQueue.Capacity > 0
             ? Channel.CreateBounded<RazorSearchRenderJob>(new BoundedChannelOptions(_options.RenderQueue.Capacity)
@@ -51,6 +57,18 @@ internal sealed class InMemoryRazorSearchRenderQueue : IRazorSearchRenderQueue, 
         }
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
+        long batchId;
+
+        lock (_batchLock)
+        {
+            if (HasActiveJobsUnsafe() is false)
+            {
+                _currentBatchId++;
+            }
+
+            batchId = _currentBatchId;
+        }
+
         RazorSearchRenderJob job = new()
         {
             Id = Guid.NewGuid(),
@@ -78,7 +96,9 @@ internal sealed class InMemoryRazorSearchRenderQueue : IRazorSearchRenderQueue, 
         RazorSearchRenderJobStatus status = new()
         {
             JobId = job.Id,
+            BatchId = batchId,
             ContentKey = job.ContentKey,
+            Route = job.Route,
             Culture = job.Culture,
             Segment = job.Segment,
             Renderer = job.Renderer,
@@ -94,6 +114,7 @@ internal sealed class InMemoryRazorSearchRenderQueue : IRazorSearchRenderQueue, 
         try
         {
             await _channel.Writer.WriteAsync(job, cancellationToken);
+            _queueActivityNotifier.Publish();
         }
         catch
         {
@@ -139,6 +160,8 @@ internal sealed class InMemoryRazorSearchRenderQueue : IRazorSearchRenderQueue, 
             UpdatedAtUtc = DateTimeOffset.UtcNow,
             IsDuplicate = false,
         };
+
+        _queueActivityNotifier.Publish();
     }
 
     public void MarkCompleted(RazorSearchRenderJob job, RazorSearchRenderResult result)
@@ -156,6 +179,7 @@ internal sealed class InMemoryRazorSearchRenderQueue : IRazorSearchRenderQueue, 
         }
 
         ReleaseDeduplicationKey(job);
+        _queueActivityNotifier.Publish();
     }
 
     public void MarkFailed(RazorSearchRenderJob job, string errorMessage)
@@ -175,6 +199,7 @@ internal sealed class InMemoryRazorSearchRenderQueue : IRazorSearchRenderQueue, 
         }
 
         ReleaseDeduplicationKey(job);
+        _queueActivityNotifier.Publish();
     }
 
     public void MarkCancelled(RazorSearchRenderJob job, string? errorMessage = null)
@@ -194,6 +219,7 @@ internal sealed class InMemoryRazorSearchRenderQueue : IRazorSearchRenderQueue, 
         }
 
         ReleaseDeduplicationKey(job);
+        _queueActivityNotifier.Publish();
     }
 
     private RazorSearchRenderEnqueueResult? TryGetDuplicate(RazorSearchRenderDeduplicationKey deduplicationKey)
@@ -230,6 +256,9 @@ internal sealed class InMemoryRazorSearchRenderQueue : IRazorSearchRenderQueue, 
             _activeJobs.TryRemove(key, out _);
         }
     }
+
+    private bool HasActiveJobsUnsafe() => _statuses.Values.Any(x =>
+        x.State is RazorSearchRenderJobState.Queued or RazorSearchRenderJobState.Running);
 
     private readonly record struct RazorSearchRenderDeduplicationKey(Guid ContentKey, string Culture)
     {

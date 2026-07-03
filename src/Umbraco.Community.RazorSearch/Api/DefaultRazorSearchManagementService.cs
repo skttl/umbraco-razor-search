@@ -4,6 +4,7 @@ using Umbraco.Cms.Core.Models.PublishedContent;
 using Umbraco.Cms.Core.Services;
 using Umbraco.Cms.Core.Web;
 using Umbraco.Community.RazorSearch.Api.Models;
+using Umbraco.Community.RazorSearch.Indexing;
 using Umbraco.Community.RazorSearch.Models;
 using Umbraco.Community.RazorSearch.Persistence.Models;
 using Umbraco.Community.RazorSearch.Persistence.Stores;
@@ -102,6 +103,7 @@ internal sealed class DefaultRazorSearchManagementService(
         IReadOnlyCollection<RazorSearchRenderJobStatus> queueStatuses = renderQueue.GetStatuses(documentId);
         IReadOnlyCollection<Umbraco.Community.RazorSearch.Persistence.Models.RazorSearchSnapshot> snapshots =
             await snapshotStore.GetByContentKeyAsync(documentId, cancellationToken);
+        string? documentName = contentService.GetById(documentId)?.Name;
 
         RazorSearchRenderJobStatus? latestQueueStatus = queueStatuses
             .OrderByDescending(x => x.UpdatedAtUtc)
@@ -116,9 +118,26 @@ internal sealed class DefaultRazorSearchManagementService(
             updatedAt = snapshots.Max(x => x.UpdatedAtUtc);
         }
 
+        RazorSearchQueueJobResponse[] jobs = queueStatuses
+            .OrderByDescending(x => x.State == RazorSearchRenderJobState.Running)
+            .ThenByDescending(x => x.UpdatedAtUtc)
+            .Select(MapQueueJobResponse)
+            .ToArray();
+
+        RazorSearchDocumentSnapshotResponse[] snapshotResponses = snapshots
+            .OrderByDescending(x => x.UpdatedAtUtc)
+            .Select(MapSnapshotResponse)
+            .ToArray();
+
+        RazorSearchDocumentIndexEntryResponse[] indexedEntries = RazorSearchSnapshotIndexProjection
+            .ProjectSuccessfulVariants(snapshots)
+            .Select(MapIndexEntryResponse)
+            .ToArray();
+
         return new RazorSearchDocumentStatusResponse
         {
             DocumentId = documentId,
+            DocumentName = documentName,
             State = latestQueueStatus?.State.ToString().ToLowerInvariant()
                 ?? ResolveSnapshotState(snapshots),
             PendingDocumentCount = queueStatuses.Count(x => x.State is RazorSearchRenderJobState.Queued or RazorSearchRenderJobState.Running),
@@ -129,6 +148,9 @@ internal sealed class DefaultRazorSearchManagementService(
             Message = latestQueueStatus is null && snapshots.Count == 0
                 ? "No queued job or stored snapshot exists for this document yet."
                 : null,
+            Jobs = jobs,
+            Snapshots = snapshotResponses,
+            IndexedEntries = indexedEntries,
         };
     }
 
@@ -147,31 +169,38 @@ internal sealed class DefaultRazorSearchManagementService(
             });
         }
 
-        RazorSearchRenderJobStatus[] activeStatuses = allStatuses
-            .Where(x => x.State is RazorSearchRenderJobState.Queued or RazorSearchRenderJobState.Running)
-            .ToArray();
+        QueueBatchSnapshot batchSnapshot = BuildQueueBatchSnapshot(allStatuses);
 
-        if (activeStatuses.Length == 0)
+        if (batchSnapshot.ActiveStatuses.Length == 0)
         {
+            int idleCompletedCount = batchSnapshot.BatchStatuses.Count(x => x.State == RazorSearchRenderJobState.Succeeded);
+            int idleFailedCount = batchSnapshot.BatchStatuses.Count(x => x.State == RazorSearchRenderJobState.Failed);
+            int idleCancelledCount = batchSnapshot.BatchStatuses.Count(x => x.State == RazorSearchRenderJobState.Cancelled);
+            int idleTotalJobCount = batchSnapshot.BatchStatuses.Length;
+            int idleFinishedCount = idleCompletedCount + idleFailedCount + idleCancelledCount;
+            int idleProgressPercent = idleTotalJobCount == 0
+                ? 0
+                : (int)Math.Round((double)idleFinishedCount / idleTotalJobCount * 100, MidpointRounding.AwayFromZero);
+
             return Task.FromResult(new RazorSearchQueueStatusResponse
             {
                 State = "idle",
-                UpdatedAt = allStatuses.Max(x => x.UpdatedAtUtc),
-                Message = "The RazorSearch queue is idle. Queue a document or run a published content rebuild to start new work.",
+                TotalJobCount = idleTotalJobCount,
+                CompletedJobCount = idleCompletedCount,
+                FailedJobCount = idleFailedCount,
+                CancelledJobCount = idleCancelledCount,
+                ProgressPercent = idleProgressPercent,
+                UpdatedAt = batchSnapshot.BatchStatuses.Max(x => x.UpdatedAtUtc),
+                Message = BuildIdleQueueStatusMessage(idleTotalJobCount, idleCompletedCount, idleFailedCount, idleCancelledCount),
             });
         }
 
-        DateTimeOffset batchStartedAt = activeStatuses.Min(x => x.EnqueuedAtUtc);
-        RazorSearchRenderJobStatus[] currentBatchStatuses = allStatuses
-            .Where(x => x.EnqueuedAtUtc >= batchStartedAt)
-            .ToArray();
-
-        int pendingCount = currentBatchStatuses.Count(x => x.State == RazorSearchRenderJobState.Queued);
-        int runningCount = currentBatchStatuses.Count(x => x.State == RazorSearchRenderJobState.Running);
-        int completedCount = currentBatchStatuses.Count(x => x.State == RazorSearchRenderJobState.Succeeded);
-        int failedCount = currentBatchStatuses.Count(x => x.State == RazorSearchRenderJobState.Failed);
-        int cancelledCount = currentBatchStatuses.Count(x => x.State == RazorSearchRenderJobState.Cancelled);
-        int totalJobCount = currentBatchStatuses.Length;
+        int pendingCount = batchSnapshot.BatchStatuses.Count(x => x.State == RazorSearchRenderJobState.Queued);
+        int runningCount = batchSnapshot.BatchStatuses.Count(x => x.State == RazorSearchRenderJobState.Running);
+        int completedCount = batchSnapshot.BatchStatuses.Count(x => x.State == RazorSearchRenderJobState.Succeeded);
+        int failedCount = batchSnapshot.BatchStatuses.Count(x => x.State == RazorSearchRenderJobState.Failed);
+        int cancelledCount = batchSnapshot.BatchStatuses.Count(x => x.State == RazorSearchRenderJobState.Cancelled);
+        int totalJobCount = batchSnapshot.BatchStatuses.Length;
         int finishedCount = completedCount + failedCount + cancelledCount;
         int progressPercent = totalJobCount == 0
             ? 0
@@ -187,8 +216,62 @@ internal sealed class DefaultRazorSearchManagementService(
             FailedJobCount = failedCount,
             CancelledJobCount = cancelledCount,
             ProgressPercent = progressPercent,
-            UpdatedAt = currentBatchStatuses.Max(x => x.UpdatedAtUtc),
+            UpdatedAt = batchSnapshot.BatchStatuses.Max(x => x.UpdatedAtUtc),
             Message = BuildQueueStatusMessage(totalJobCount, pendingCount, runningCount, finishedCount),
+            CurrentJob = ResolveCurrentJobResponse(batchSnapshot.ActiveStatuses),
+        });
+    }
+
+    public Task<RazorSearchQueueBatchDetailsResponse> GetQueueBatchDetailsAsync(CancellationToken cancellationToken)
+    {
+        IReadOnlyCollection<RazorSearchRenderJobStatus> allStatuses = renderQueue.GetAllStatuses();
+        DateTimeOffset now = timeProvider.GetUtcNow();
+
+        if (allStatuses.Count == 0)
+        {
+            return Task.FromResult(new RazorSearchQueueBatchDetailsResponse
+            {
+                State = "idle",
+                UpdatedAt = now,
+                Message = "No RazorSearch jobs have been queued since the application started.",
+            });
+        }
+
+        QueueBatchSnapshot batchSnapshot = BuildQueueBatchSnapshot(allStatuses);
+        RazorSearchQueueJobResponse[] jobs = batchSnapshot.BatchStatuses
+            .OrderBy(GetQueueStatusDisplayOrder)
+            .ThenByDescending(x => x.UpdatedAtUtc)
+            .Select(MapQueueJobResponse)
+            .ToArray();
+
+        int pendingCount = batchSnapshot.BatchStatuses.Count(x => x.State == RazorSearchRenderJobState.Queued);
+        int runningCount = batchSnapshot.BatchStatuses.Count(x => x.State == RazorSearchRenderJobState.Running);
+        int completedCount = batchSnapshot.BatchStatuses.Count(x => x.State == RazorSearchRenderJobState.Succeeded);
+        int failedCount = batchSnapshot.BatchStatuses.Count(x => x.State == RazorSearchRenderJobState.Failed);
+        int cancelledCount = batchSnapshot.BatchStatuses.Count(x => x.State == RazorSearchRenderJobState.Cancelled);
+        int totalJobCount = batchSnapshot.BatchStatuses.Length;
+        int finishedCount = completedCount + failedCount + cancelledCount;
+        int progressPercent = totalJobCount == 0
+            ? 0
+            : (int)Math.Round((double)finishedCount / totalJobCount * 100, MidpointRounding.AwayFromZero);
+
+        return Task.FromResult(new RazorSearchQueueBatchDetailsResponse
+        {
+            State = batchSnapshot.ActiveStatuses.Length > 0
+                ? (runningCount > 0 ? "running" : "queued")
+                : "idle",
+            TotalJobCount = totalJobCount,
+            PendingJobCount = pendingCount,
+            RunningJobCount = runningCount,
+            CompletedJobCount = completedCount,
+            FailedJobCount = failedCount,
+            CancelledJobCount = cancelledCount,
+            ProgressPercent = progressPercent,
+            UpdatedAt = batchSnapshot.BatchStatuses.Max(x => x.UpdatedAtUtc),
+            Message = batchSnapshot.ActiveStatuses.Length > 0
+                ? BuildQueueStatusMessage(totalJobCount, pendingCount, runningCount, finishedCount)
+                : BuildIdleQueueStatusMessage(totalJobCount, completedCount, failedCount, cancelledCount),
+            Jobs = jobs,
         });
     }
 
@@ -473,12 +556,127 @@ internal sealed class DefaultRazorSearchManagementService(
         return $"{finishedCount} of {totalJobCount} queued RazorSearch job(s) have finished. {pendingCount} job(s) are waiting to start.";
     }
 
+    private static string BuildIdleQueueStatusMessage(
+        int totalJobCount,
+        int completedCount,
+        int failedCount,
+        int cancelledCount)
+    {
+        if (totalJobCount == 0)
+        {
+            return "The RazorSearch queue is idle. Queue a document or run a published content rebuild to start new work.";
+        }
+
+        return $"The RazorSearch queue is idle. The last batch finished with {completedCount} completed, {failedCount} failed, and {cancelledCount} cancelled job(s).";
+    }
+
+    private static QueueBatchSnapshot BuildQueueBatchSnapshot(IReadOnlyCollection<RazorSearchRenderJobStatus> allStatuses)
+    {
+        RazorSearchRenderJobStatus[] activeStatuses = allStatuses
+            .Where(x => x.State is RazorSearchRenderJobState.Queued or RazorSearchRenderJobState.Running)
+            .ToArray();
+
+        long currentBatchId = activeStatuses.Length > 0
+            ? activeStatuses.Max(x => x.BatchId)
+            : allStatuses.Max(x => x.BatchId);
+
+        RazorSearchRenderJobStatus[] currentBatchStatuses = allStatuses
+            .Where(x => x.BatchId == currentBatchId)
+            .ToArray();
+
+        return new QueueBatchSnapshot(activeStatuses, currentBatchStatuses);
+    }
+
+    private static int GetQueueStatusDisplayOrder(RazorSearchRenderJobStatus status)
+        => status.State switch
+        {
+            RazorSearchRenderJobState.Running => 0,
+            RazorSearchRenderJobState.Queued => 1,
+            RazorSearchRenderJobState.Failed => 2,
+            RazorSearchRenderJobState.Cancelled => 3,
+            RazorSearchRenderJobState.Succeeded => 4,
+            _ => 5,
+        };
+
+    private RazorSearchQueueJobResponse? ResolveCurrentJobResponse(IReadOnlyCollection<RazorSearchRenderJobStatus> activeStatuses)
+    {
+        RazorSearchRenderJobStatus? currentStatus = activeStatuses
+            .OrderByDescending(x => x.State == RazorSearchRenderJobState.Running)
+            .ThenBy(x => x.State == RazorSearchRenderJobState.Running
+                ? x.StartedAtUtc ?? x.EnqueuedAtUtc
+                : x.EnqueuedAtUtc)
+            .FirstOrDefault();
+
+        if (currentStatus is null)
+        {
+            return null;
+        }
+
+        return MapQueueJobResponse(currentStatus);
+    }
+
+    private RazorSearchQueueJobResponse MapQueueJobResponse(RazorSearchRenderJobStatus currentStatus)
+    {
+        string? documentName = contentService.GetById(currentStatus.ContentKey)?.Name;
+
+        return new RazorSearchQueueJobResponse
+        {
+            DocumentId = currentStatus.ContentKey,
+            DocumentName = documentName,
+            State = currentStatus.State.ToString().ToLowerInvariant(),
+            Route = currentStatus.Route,
+            Renderer = currentStatus.Renderer,
+            Culture = currentStatus.Culture,
+            Segment = currentStatus.Segment,
+            EnqueuedAt = currentStatus.EnqueuedAtUtc,
+            UpdatedAt = currentStatus.UpdatedAtUtc,
+            StartedAt = currentStatus.StartedAtUtc,
+            CompletedAt = currentStatus.CompletedAtUtc,
+            ErrorMessage = currentStatus.ErrorMessage,
+        };
+    }
+
+    private static RazorSearchDocumentSnapshotResponse MapSnapshotResponse(RazorSearchSnapshot snapshot)
+        => new()
+        {
+            Route = snapshot.Route,
+            FinalUrl = snapshot.FinalUrl,
+            Renderer = snapshot.Renderer,
+            Culture = snapshot.Culture,
+            Segment = snapshot.Segment,
+            State = snapshot.RenderStatus.ToLowerInvariant(),
+            Snapshot = snapshot.Snapshot,
+            SnapshotHtml = snapshot.SnapshotHtml,
+            TitleText = snapshot.TitleText,
+            SummaryText = snapshot.SummaryText,
+            HeadingText = snapshot.HeadingText,
+            BodyText = snapshot.BodyText,
+            ErrorMessage = snapshot.LastRenderError,
+            RenderedAt = snapshot.RenderedAtUtc,
+            UpdatedAt = snapshot.UpdatedAtUtc,
+        };
+
+    private static RazorSearchDocumentIndexEntryResponse MapIndexEntryResponse(RazorSearchIndexedVariant variant)
+        => new()
+        {
+            Culture = variant.Culture,
+            Segment = variant.Segment,
+            Titles = variant.Titles,
+            Summaries = variant.Summaries,
+            Headings = variant.Headings,
+            Content = variant.Bodies,
+        };
+
     private sealed record PublishedContentTarget(IContent Content, IPublishedContent PublishedContent);
 
     private sealed record PublishedContentSelection(
         IReadOnlyCollection<PublishedContentTarget> SelectedDocuments,
         int TotalPublishedDocumentCount,
         bool WasTruncated);
+
+    private sealed record QueueBatchSnapshot(
+        RazorSearchRenderJobStatus[] ActiveStatuses,
+        RazorSearchRenderJobStatus[] BatchStatuses);
 
     private sealed record DocumentQueueSummary(
         IReadOnlyCollection<RazorSearchRenderJobStatus> Statuses,

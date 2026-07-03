@@ -11,7 +11,9 @@ import {
   RAZOR_SEARCH_ENTITY_TYPE,
   RAZOR_SEARCH_WORKSPACE_ALIAS,
 } from "./razor-search-backoffice.constants.js";
+import { RAZOR_SEARCH_QUEUE_DETAILS_MODAL_ALIAS } from "./razor-search-queue-details-modal.token.js";
 import { RAZOR_SEARCH_QUEUE_MODAL_ALIAS } from "./razor-search-queue-modal.token.js";
+import { RAZOR_SEARCH_STATUS_MODAL_ALIAS } from "./razor-search-status-modal.token.js";
 
 const manifests: Array<
   | ManifestEntityAction
@@ -40,10 +42,22 @@ const manifests: Array<
     element: () => import("./razor-search-queue-modal.element.js"),
   },
   {
+    type: "modal",
+    alias: RAZOR_SEARCH_QUEUE_DETAILS_MODAL_ALIAS,
+    name: "RazorSearch Queue Details Modal",
+    element: () => import("./razor-search-queue-details-modal.element.js"),
+  },
+  {
+    type: "modal",
+    alias: RAZOR_SEARCH_STATUS_MODAL_ALIAS,
+    name: "RazorSearch Status Modal",
+    element: () => import("./razor-search-status-modal.element.js"),
+  },
+  {
     type: "menuItem",
     alias: "Umbraco.Community.RazorSearch.MenuItem.Settings",
     name: "RazorSearch Settings Menu Item",
-    weight: 250,
+    weight: 401,
     meta: {
       label: "RazorSearch",
       icon: "icon-search",
