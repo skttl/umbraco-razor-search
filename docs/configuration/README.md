@@ -73,7 +73,6 @@ Your host must configure:
 - `AddSearchCore()`
 - a concrete provider
 - the published content index and searcher used by that provider
-- any provider-specific field schema required for the RazorSearch aliases
 
 Without that, RazorSearch cannot return results.
 
@@ -176,27 +175,6 @@ Example:
 {
   "RazorSearch": {
     "DefaultRenderer": "internal-http"
-  }
-}
-```
-
-Examine provider example:
-
-```json
-{
-  "Umbraco": {
-    "CMS": {
-      "Search": {
-        "Examine": {
-          "Fields": [
-            { "PropertyName": "RazorSearch_Title", "FieldValues": "TextsR1" },
-            { "PropertyName": "RazorSearch_Summary", "FieldValues": "TextsR2" },
-            { "PropertyName": "RazorSearch_Heading", "FieldValues": "TextsR2" },
-            { "PropertyName": "RazorSearch_Content", "FieldValues": "Texts" }
-          ]
-        }
-      }
-    }
   }
 }
 ```

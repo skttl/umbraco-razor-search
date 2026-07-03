@@ -1,10 +1,10 @@
 # Migrating from FullTextSearch
 
-This guide is verified against the current RazorSearch package code, not against earlier planning notes.
+This guide shows the practical migration path from `Our.Umbraco.FullTextSearch` to RazorSearch.
 
-## What still maps cleanly
+## Quick mapping reference
 
-These migrations are still valid:
+These common replacements map directly:
 
 | FullTextSearch | RazorSearch |
 | --- | --- |
@@ -18,7 +18,7 @@ These migrations are still valid:
 | `AddAllowedContentTypes(...)` | `IncludeContentTypes(...)` |
 | `FullTextSearchHelper.IsRenderingActive()` | `SearchRenderingContext.IsActive` |
 
-## Typical service migration
+## Step 1: Replace the injected service
 
 Before:
 
@@ -46,7 +46,7 @@ public SearchController(IRazorSearchService razorSearchService, ...)
 }
 ```
 
-## Typical controller migration
+## Step 2: Update your search request code
 
 ```csharp
 public override async Task<IActionResult> Index()
@@ -73,7 +73,7 @@ public override async Task<IActionResult> Index()
 }
 ```
 
-## Snapshot extraction model
+## Step 3: Translate extraction configuration
 
 RazorSearch now has a package-level source configuration model under `RazorSearch:SnapshotExtraction`.
 
@@ -119,9 +119,7 @@ Important behavior:
 - `HeadingSources` and `BodySources` merge multiple non-empty values.
 - property sources read published Umbraco property values for the current content and culture.
 
-## What does not exist in RazorSearch
-
-These are the most important corrections to older migration notes.
+## Step 4: Check for features that do not carry over
 
 ### No XPath model
 
@@ -139,18 +137,18 @@ If your existing code depends on raw Examine fields or score values, that code w
 
 RazorSearch uses culture only when you set it explicitly on the `RazorSearch` request. If you need culture-specific behavior, keep setting culture explicitly during migration.
 
-## Indexing model difference to plan for
+## Step 5: Backfill snapshots after install
 
-This is the operational difference most likely to surprise existing FullTextSearch users:
+This is the operational difference most likely to matter during rollout:
 
 - RazorSearch stores rendered snapshots in its own table
 - the published content search index picks up snapshot fields through `IContentIndexer`
 - RazorSearch now refreshes the published-content index automatically after snapshot writes and deletes
 
-That means migration should still include:
+After installing and configuring the package, you should still:
 
-1. snapshot backfill or rebuild
-2. waiting for the resulting jobs to finish before validating search results
+1. queue a snapshot backfill or rebuild
+2. wait for the resulting jobs to finish before validating search results
 
 ## Recommended migration checklist
 
@@ -169,7 +167,7 @@ That means migration should still include:
 13. Translate older extraction rules to `SnapshotExtraction` source objects and `RemoveSelectors`.
 14. Queue a snapshot backfill.
 
-## Safe expectation setting
+## What to expect
 
 The easiest way to think about the migration is:
 

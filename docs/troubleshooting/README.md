@@ -7,7 +7,6 @@ Check these first:
 - the host actually calls `AddSearchCore()`
 - a search provider is registered
 - the published content index is configured
-- the provider schema includes the RazorSearch field aliases if the provider requires explicit field registration
 - snapshots exist for the content you expect to find
 - the relevant render jobs have finished
 
@@ -15,20 +14,18 @@ Snapshot writes now trigger a published-content index refresh automatically, so 
 
 ## RazorSearch fields do not appear in `Umb_PublishedContent`
 
-That usually means the provider schema does not know about the RazorSearch aliases yet.
+First make sure snapshots exist and the related render jobs have finished.
 
-The `IContentIndexer` can return values correctly and the refresh can still run, but providers with explicit schemas will not materialize those fields until they are registered.
+You can verify that by:
 
-For the Examine provider, add entries like these under `Umbraco:CMS:Search:Examine:Fields`:
+1. queueing a rebuild for the document or subtree if needed
+2. checking the document status endpoint: `GET /umbraco/management/api/v1/razor-search/document/{id}/status`
+3. confirming the document has a successful snapshot for the culture you expect
+4. checking RazorSearch logs if the job failed or never completed
 
-```json
-[
-  { "PropertyName": "RazorSearch_Title", "FieldValues": "TextsR1" },
-  { "PropertyName": "RazorSearch_Summary", "FieldValues": "TextsR2" },
-  { "PropertyName": "RazorSearch_Heading", "FieldValues": "TextsR2" },
-  { "PropertyName": "RazorSearch_Content", "FieldValues": "Texts" }
-]
-```
+If you need to backfill content first, use the RazorSearch backoffice management view or the rebuild endpoints described in [../indexing/README.md](../indexing/README.md).
+
+RazorSearch writes its fields through `IContentIndexer`, so if the aliases are missing from your provider output, verify the index refresh has completed and then inspect provider-specific behavior.
 
 ## Search results are stale after publishing
 

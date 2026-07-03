@@ -2,6 +2,14 @@
 
 RazorSearch is consumed through `IRazorSearchService` and the `RazorSearch` request model.
 
+The usual flow is:
+
+1. inject `IRazorSearchService`
+2. create a `RazorSearch` request
+3. add scope, culture, or paging as needed
+4. call `SearchAsync(...)`
+5. render the returned items
+
 ## Inject the service
 
 ```csharp
@@ -53,7 +61,7 @@ public override async Task<IActionResult> Index()
 }
 ```
 
-## Search from any other service or controller
+## Search from any service or controller
 
 The same API works outside `RenderController`:
 
@@ -75,7 +83,7 @@ public sealed class SearchFacade(IRazorSearchService razorSearchService)
 }
 ```
 
-## Render results in a view
+## Render results
 
 ```cshtml
 @using Umbraco.Community.RazorSearch.Models
@@ -118,7 +126,7 @@ Important:
 - with the built-in HTTP renderer, RazorSearch sends that token automatically
 - configure `RazorSearch:RenderRequestToken` only if you want to override the default fallback token
 
-## Use `SearchRenderingContext.IsActive` to remove or suppress markup
+## Hide site-only markup from search snapshots
 
 This pattern is useful when you want RazorSearch rendering to omit markup that should not affect the extracted search text.
 
@@ -166,7 +174,7 @@ How it works:
 
 Use this when you want search rendering to be cleaner than the public page output.
 
-## Request model capabilities
+## Common request options
 
 The current `RazorSearch` request model supports:
 

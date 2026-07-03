@@ -60,8 +60,6 @@ Those values are emitted under these fixed field aliases:
 - `RazorSearch_Heading`
 - `RazorSearch_Content`
 
-If your provider requires explicit field registration, those aliases must also be declared in the provider schema before they will appear in the provider index. For Examine, that means adding matching entries under `Umbraco:CMS:Search:Examine:Fields`.
-
 ## Current indexing flow
 
 Snapshot rendering and published-content index refresh are now connected.
@@ -71,7 +69,6 @@ In the current package version:
 - the background render job stores snapshot data in the RazorSearch table
 - the custom `IContentIndexer` supplies that snapshot data to Umbraco Search
 - RazorSearch requests a published-content index refresh after snapshot writes and deletes
-- the search provider must already know the RazorSearch field aliases if it uses an explicit schema
 
 In practice, that means:
 

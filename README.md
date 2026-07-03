@@ -4,9 +4,9 @@ Search rendered Umbraco pages with Umbraco Search.
 
 RazorSearch stores rendered HTML snapshots, extracts searchable text from them, and contributes those fields to Umbraco Search through `IContentIndexer`.
 
-## Status
+## Requirements
 
-Requires **Umbraco 17**.
+RazorSearch requires **Umbraco 17**.
 
 The package is intentionally provider-agnostic:
 
@@ -20,9 +20,13 @@ Your host application must bootstrap Umbraco Search first.
 
 ## Quick Start
 
+Install the package:
+
 ```bash
 dotnet add package Umbraco.Community.RazorSearch
 ```
+
+Enable Umbraco Search in your host application:
 
 ```csharp
 builder.CreateUmbracoBuilder()
@@ -32,9 +36,11 @@ builder.CreateUmbracoBuilder()
     .AddSearchCore();
 ```
 
-After that, register the Umbraco Search provider you want to use and configure its published content index in the consuming application.
+Then make sure your host application also:
 
-If your provider requires explicit field registration, also register the RazorSearch field aliases there. For the Examine provider, add `RazorSearch_Title`, `RazorSearch_Summary`, `RazorSearch_Heading`, and `RazorSearch_Content` under `Umbraco:CMS:Search:Examine:Fields`.
+1. registers the Umbraco Search provider you want to use
+2. configures that provider's published content index
+3. backfills existing content after first install so snapshots exist for older pages
 
 Most projects do not need extra `RazorSearch` configuration unless they want to change extraction behavior or exclude content by content type or property alias.
 
@@ -58,9 +64,9 @@ Most projects do not need extra `RazorSearch` configuration unless they want to 
 - a custom Umbraco Search content indexer backed by stored snapshots
 - management endpoints and backoffice tooling for queueing rebuilds
 
-## Important Notes
+## Good To Know
 
-- Snapshot writes and deletes now trigger a published-content index refresh through `Umbraco.Cms.Search.Core`, but the provider still needs to know about the RazorSearch field aliases up front if it uses an explicit field schema.
+- Snapshot writes and deletes now trigger a published-content index refresh through `Umbraco.Cms.Search.Core`.
 - If you rely on `SearchRenderingContext.IsActive` in your views, RazorSearch will automatically use a fallback render token during built-in HTTP rendering. Configure `RazorSearch:RenderRequestToken` only if you want full control over that token value.
 - `ExcludedContentTypeAliases` and `ExcludeFromSearchPropertyAlias` are enforced automatically during queueing, indexing, and runtime search.
 - Snapshot extraction is configurable through `RazorSearch:SnapshotExtraction`, including object-based CSS-selector and Umbraco-property sources plus CSS-selector-based removal.

@@ -10,13 +10,13 @@ This guide covers the package installation itself and the host-level setup Razor
 
 RazorSearch depends on `Umbraco.Cms.Search.Core`, but it does not bootstrap that pipeline for you.
 
-## Install the package
+## Step 1: Install the package
 
 ```bash
 dotnet add package Umbraco.Community.RazorSearch
 ```
 
-## Register Umbraco Search in the host
+## Step 2: Enable Umbraco Search in the host
 
 At minimum, your host must call `AddSearchCore()`:
 
@@ -31,6 +31,25 @@ builder.CreateUmbracoBuilder()
 ```
 
 RazorSearch does not register a concrete search provider. If you use Examine or another provider, that provider registration belongs in the consuming application as well.
+
+## Step 3: Register your provider
+
+RazorSearch adds searchable fields to Umbraco Search, but your host application still owns the provider setup.
+
+Make sure your host application also:
+
+- registers the search provider you want to use
+- configures the published content index used by that provider
+
+## Step 4: Start the site
+
+When the site starts, RazorSearch automatically registers its services and applies any pending migrations for its snapshot table.
+
+## Step 5: Backfill existing content
+
+RazorSearch only creates snapshots when content is rendered through its queue.
+
+For a new installation, queue a rebuild or backfill after startup so existing published content becomes searchable.
 
 ## What the package registers automatically
 
