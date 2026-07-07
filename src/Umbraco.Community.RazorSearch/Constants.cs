@@ -10,4 +10,11 @@ public static class Constants
     public const string SummaryFieldName = "RazorSearch_Summary";
     public const string HeadingFieldName = "RazorSearch_Heading";
     public const string ContentFieldName = "RazorSearch_Content";
+
+    internal static class InternalIndex
+    {
+        public const string Alias = "Umb_RazorSearch";
+        public const string ContentTypeAliasFieldName = "RazorSearch_ContentTypeAlias";
+        public const string ExcludedFlagFieldName = "RazorSearch_Excluded";
+    }
 }

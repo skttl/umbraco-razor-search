@@ -39,8 +39,11 @@ jobs:
       env:
         RELEASE_VERSION: ${{ github.ref_name }}
 
-    - name: Build & Pack
+    - name: Build & Pack Core Package
       run: dotnet pack src\Umbraco.Community.RazorSearch\Umbraco.Community.RazorSearch.csproj -c Release /p:Version=${{github.ref_name}}
+
+    - name: Build & Pack Examine Companion Package
+      run: dotnet pack src\Umbraco.Community.RazorSearch.Examine\Umbraco.Community.RazorSearch.Examine.csproj -c Release /p:Version=${{github.ref_name}}
 
     - name: Push to NuGet
       run: dotnet nuget push **\*.nupkg -k ${{secrets.NUGET_API_KEY}} -s https://api.nuget.org/v3/index.json

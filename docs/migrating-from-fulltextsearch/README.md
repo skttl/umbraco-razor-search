@@ -64,7 +64,7 @@ public override async Task<IActionResult> Index()
     pageNumber = pageNumber < 1 ? 1 : pageNumber;
 
     var search = new RazorSearch(query)
-        .InCulture(CurrentPage.GetCultureFromDomains().ToLowerInvariant())
+        .InCulture(CurrentPage.GetCultureFromDomains())
         .UnderRoot(CurrentPage.Root().Key)
         .Page(pageNumber, 10);
 
@@ -142,8 +142,8 @@ RazorSearch uses culture only when you set it explicitly on the `RazorSearch` re
 This is the operational difference most likely to matter during rollout:
 
 - RazorSearch stores rendered snapshots in its own table
-- the published content search index picks up snapshot fields through `IContentIndexer`
-- RazorSearch now refreshes the published-content index automatically after snapshot writes and deletes
+- RazorSearch writes its own searchable fields into a dedicated internal search index
+- snapshot writes and deletes now refresh that internal RazorSearch index automatically
 
 After installing and configuring the package, you should still:
 

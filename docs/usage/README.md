@@ -51,7 +51,7 @@ public override async Task<IActionResult> Index()
     pageNumber = pageNumber < 1 ? 1 : pageNumber;
 
     var search = new RazorSearch(query)
-        .InCulture(CurrentPage.GetCultureFromDomains().ToLowerInvariant())
+        .InCulture(CurrentPage.GetCultureFromDomains())
         .UnderRoot(CurrentPage.Root().Key)
         .ExcludeContentTypes("folder", "searchPage")
         .Page(pageNumber, 10);

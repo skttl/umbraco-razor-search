@@ -6,13 +6,14 @@ Check these first:
 
 - the host actually calls `AddSearchCore()`
 - a search provider is registered
-- the published content index is configured
+- if the host uses Examine, `Umbraco.Community.RazorSearch.Examine` is installed
+- the search provider is able to initialize the internal RazorSearch index
 - snapshots exist for the content you expect to find
 - the relevant render jobs have finished
 
-Snapshot writes now trigger a published-content index refresh automatically, so missing results are usually caused by missing snapshots, incomplete provider setup, or filtering.
+Snapshot writes now trigger an internal RazorSearch index refresh automatically, so missing results are usually caused by missing snapshots, incomplete provider setup, or filtering.
 
-## RazorSearch fields do not appear in `Umb_PublishedContent`
+## RazorSearch fields do not appear in the internal RazorSearch index
 
 First make sure snapshots exist and the related render jobs have finished.
 
@@ -25,7 +26,13 @@ You can verify that by:
 
 If you need to backfill content first, use the RazorSearch backoffice management view or the rebuild endpoints described in [../indexing/README.md](../indexing/README.md).
 
-RazorSearch writes its fields through `IContentIndexer`, so if the aliases are missing from your provider output, verify the index refresh has completed and then inspect provider-specific behavior.
+RazorSearch writes its fields through its own internal indexing pipeline, so if results are still missing after snapshots have completed, verify the index refresh has completed and then inspect provider-specific behavior.
+
+## Examine says the RazorSearch index could not be found
+
+That usually means the host has `Umbraco.Cms.Search.Provider.Examine`, but not the companion package that creates the physical Lucene index for RazorSearch.
+
+Install `Umbraco.Community.RazorSearch.Examine`, restart the site, and rerun the rebuild.
 
 ## Search results are stale after publishing
 

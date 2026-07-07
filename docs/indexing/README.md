@@ -3,7 +3,7 @@
 RazorSearch has two related but separate concerns:
 
 1. rendering pages into stored snapshots
-2. contributing snapshot text into the published content index through Umbraco Search
+2. writing searchable snapshot text into RazorSearch's internal dedicated Umbraco Search index
 
 That distinction is important when you troubleshoot freshness issues.
 
@@ -44,31 +44,33 @@ On recycle-bin moves, RazorSearch removes snapshots for the affected subtree.
 
 ## When search indexing happens
 
-RazorSearch contributes fields through `IContentIndexer`, not by owning a separate search index.
+RazorSearch owns a separate internal index alias instead of writing into the shared published-content index.
+
+That alias is still provider-backed. For example, Examine hosts should install `Umbraco.Community.RazorSearch.Examine`, which registers the physical Lucene index and field definitions behind the internal RazorSearch alias.
 
 The current field mapping is:
 
 - title text -> `TextsR1`
-- summary text -> `TextsR2`
 - heading text -> `TextsR2`
 - body text -> `Texts`
 
-Those values are emitted under these fixed field aliases:
+Those searchable values are emitted under these fixed field aliases:
 
 - `RazorSearch_Title`
-- `RazorSearch_Summary`
 - `RazorSearch_Heading`
 - `RazorSearch_Content`
 
+`RazorSearch_Summary` is still stored in snapshots for result display, but it is not indexed as a searchable match field.
+
 ## Current indexing flow
 
-Snapshot rendering and published-content index refresh are now connected.
+Snapshot rendering and internal RazorSearch index refresh are now connected.
 
 In the current package version:
 
 - the background render job stores snapshot data in the RazorSearch table
-- the custom `IContentIndexer` supplies that snapshot data to Umbraco Search
-- RazorSearch requests a published-content index refresh after snapshot writes and deletes
+- RazorSearch writes only the needed fulltext fields plus filter metadata into its internal search index
+- RazorSearch requests an internal index refresh after snapshot writes and deletes
 
 In practice, that means:
 

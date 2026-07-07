@@ -23,7 +23,7 @@
         string? culture = Model.GetCultureFromDomains();
         if (!string.IsNullOrWhiteSpace(culture))
         {
-            search.InCulture(culture.ToLowerInvariant());
+            search.InCulture(culture);
         }
 
         searchResult = await razorSearchService.SearchAsync(search);

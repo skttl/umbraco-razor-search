@@ -10,6 +10,12 @@ RazorSearch requires **Umbraco 17**.
 dotnet add package Umbraco.Community.RazorSearch
 ```
 
+If the host uses `Umbraco.Cms.Search.Provider.Examine`, also install:
+
+```bash
+dotnet add package Umbraco.Community.RazorSearch.Examine
+```
+
 ## Host setup
 
 RazorSearch references `Umbraco.Cms.Search.Core`, but it does **not** bootstrap Umbraco Search for the consuming application.
@@ -18,7 +24,9 @@ Your application still needs to:
 
 - call `AddSearchCore()`
 - register the provider you want to use
-- configure the published content index used by that provider
+- configure that provider for the host application
+
+For Examine, the companion package takes care of the RazorSearch-specific Lucene index registration and field definitions. The consuming app still does not need to know the internal RazorSearch index alias.
 
 `AddSearchCore()` comes from the `Umbraco.Cms.Search` package.
 
@@ -43,12 +51,12 @@ Most projects do not need extra `RazorSearch` configuration unless they want to 
 - a background render queue
 - an HTTP renderer
 - configurable extraction for title, summary, headings, and body text from rendered HTML and published Umbraco properties
-- a custom `IContentIndexer` that contributes snapshot fields to Umbraco Search
+- an internal dedicated RazorSearch index backed by stored snapshots
 - management endpoints and backoffice tooling for rebuild and backfill flows
 
 ## Good to know
 
-- Queueing or rebuilding snapshots now refreshes the published content index through `Umbraco.Cms.Search.Core` after snapshot writes and deletes.
+- Queueing or rebuilding snapshots now refreshes the RazorSearch index through `Umbraco.Cms.Search.Core` after snapshot writes and deletes.
 - If you use `SearchRenderingContext.IsActive` in views, RazorSearch will automatically use a fallback render token during built-in HTTP rendering. Configure `RazorSearch:RenderRequestToken` only if you want full control over that token value.
-- The options `ExcludedContentTypeAliases` and `ExcludeFromSearchPropertyAlias` are enforced automatically during queueing, indexing, and runtime search.
+- The options `ExcludedContentTypeAliases` and `ExcludeFromSearchPropertyAlias` are enforced automatically during queueing and through index-native filters at runtime search.
 - Snapshot extraction can be customized through `RazorSearch:SnapshotExtraction`, including object-based CSS-selector and Umbraco-property sources plus CSS-selector-based removal before text extraction.

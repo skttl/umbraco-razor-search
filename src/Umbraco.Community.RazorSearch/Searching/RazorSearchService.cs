@@ -1,9 +1,9 @@
+using System.Globalization;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core;
 using Umbraco.Cms.Core.Models;
 using Umbraco.Cms.Core.Models.PublishedContent;
 using Umbraco.Cms.Core.PublishedCache;
-using Umbraco.Cms.Core.Services;
 using Umbraco.Cms.Core.Web;
 using Umbraco.Cms.Search.Core.Extensions;
 using Umbraco.Cms.Search.Core.Models.Searching;
@@ -20,13 +20,10 @@ namespace Umbraco.Community.RazorSearch.Searching;
 public sealed class RazorSearchService(
     IRazorSearchSnapshotStore snapshotStore,
     ISearcherResolver searcherResolver,
-    IContentTypeService contentTypeService,
     IUmbracoContextFactory umbracoContextFactory,
     IOptions<RazorSearchOptions> razorSearchOptions
 ) : IRazorSearchService
 {
-    private const int SearchBatchSize = 128;
-
     public async Task<IRazorSearchResult> SearchAsync(
         Models.RazorSearch search,
         CancellationToken cancellationToken = default
@@ -43,43 +40,41 @@ public sealed class RazorSearchService(
             return EmptyResult(search);
         }
 
-        HashSet<Guid> rootKeys = search.RootKeys.ToHashSet();
-        HashSet<string> includedAliases = search.IncludedContentTypeAliases.ToHashSet(
-            StringComparer.OrdinalIgnoreCase
+        ISearcher searcher = searcherResolver.GetRequiredSearcher(
+            Constants.InternalIndex.Alias
         );
-        HashSet<string> excludedAliases = GetEffectiveExcludedAliases(search);
-        Filter[] filters = CreateMetadataFilters(
-            contentCache,
-            rootKeys,
-            includedAliases,
-            excludedAliases,
-            out bool canMatch
+
+        Filter[] filters = CreateMetadataFilters(search);
+
+        SearchResult searchResult = await searcher.SearchAsync(
+            Constants.InternalIndex.Alias,
+            search.Text,
+            filters,
+            [],
+            [new ScoreSorter(Direction.Descending)],
+            NormalizeCultureForSearchProvider(search.Culture),
+            NormalizeVariant(search.Segment),
+            CreateAccessContext(),
+            search.Skip,
+            search.Take,
+            0
         );
-        if (canMatch is false)
+
+        Document[] documents = searchResult.Documents.ToArray();
+        if (documents.Length == 0)
         {
             return EmptyResult(search);
         }
 
-        ISearcher searcher = searcherResolver.GetRequiredSearcher(
-            Umbraco.Cms.Search.Core.Constants.IndexAliases.PublishedContent
-        );
-
-        SearchCandidate[] candidates = await SearchCandidatesAsync(
+        SearchCandidate[] candidates = await BuildCandidatesAsync(
             searcher,
             contentCache,
             search,
-            filters,
+            documents,
             cancellationToken
         );
 
-        if (candidates.Length == 0)
-        {
-            return EmptyResult(search);
-        }
-
         IRazorSearchResultItem[] items = candidates
-            .Skip(search.Skip)
-            .Take(search.Take)
             .Select(x => new RazorSearchResultItem
             {
                 ContentKey = x.ContentKey,
@@ -97,7 +92,7 @@ public sealed class RazorSearchService(
 
         IRazorSearchResult result = new RazorSearchResult
         {
-            Total = candidates.LongLength,
+            Total = searchResult.Total,
             Skip = search.Skip,
             Take = search.Take,
             Items = items,
@@ -115,96 +110,41 @@ public sealed class RazorSearchService(
             Items = [],
         };
 
-    private async Task<SearchCandidate[]> SearchCandidatesAsync(
-        ISearcher searcher,
+    private async Task<SearchCandidate[]> BuildCandidatesAsync(
+        ISearcher _,
         IPublishedContentCache contentCache,
         Models.RazorSearch search,
-        IReadOnlyCollection<Filter> filters,
+        IReadOnlyCollection<Document> documents,
         CancellationToken cancellationToken
     )
     {
-        var candidates = new List<SearchCandidate>();
-        var seenContentKeys = new HashSet<Guid>();
+        Guid[] documentIds = documents
+            .Where(x => x.ObjectType == UmbracoObjectTypes.Document)
+            .Select(x => x.Id)
+            .Distinct()
+            .ToArray();
 
-        int skip = 0;
-        long total = long.MaxValue;
-
-        while (skip < total)
+        if (documentIds.Length == 0)
         {
-            SearchResult searchResult = await searcher.SearchAsync(
-                Umbraco.Cms.Search.Core.Constants.IndexAliases.PublishedContent,
-                search.Text,
-                filters,
-                [],
-                [new ScoreSorter(Direction.Descending)],
-                search.Culture ?? string.Empty,
-                search.Segment ?? string.Empty,
-                CreateAccessContext(),
-                skip,
-                SearchBatchSize,
-                0
-            );
-
-            total = searchResult.Total;
-            Document[] documents = searchResult.Documents.ToArray();
-            if (documents.Length == 0)
-            {
-                break;
-            }
-
-            skip += documents.Length;
-
-            Guid[] documentIds = documents
-                .Where(x => x.ObjectType == UmbracoObjectTypes.Document)
-                .Select(x => x.Id)
-                .Distinct()
-                .ToArray();
-
-            if (documentIds.Length == 0)
-            {
-                continue;
-            }
-
-            IReadOnlyCollection<RazorSearchSnapshot> snapshots =
-                await snapshotStore.GetByContentKeysAsync(documentIds, cancellationToken);
-            Dictionary<Guid, RazorSearchSnapshot[]> snapshotsByContentKey = snapshots
-                .GroupBy(x => x.ContentKey)
-                .ToDictionary(x => x.Key, x => x.ToArray());
-
-            foreach (Guid documentId in documentIds)
-            {
-                if (seenContentKeys.Add(documentId) is false)
-                {
-                    continue;
-                }
-
-                if (
-                    snapshotsByContentKey.TryGetValue(
-                        documentId,
-                        out RazorSearchSnapshot[]? contentSnapshots
-                    )
-                    is false
-                )
-                {
-                    continue;
-                }
-
-                SearchCandidate? candidate = CreateCandidate(
-                    contentSnapshots,
-                    contentCache,
-                    search,
-                    documentId
-                );
-                if (candidate is null)
-                {
-                    continue;
-                }
-
-                candidates.Add(candidate);
-            }
+            return [];
         }
 
-        return candidates.ToArray();
+        IReadOnlyCollection<RazorSearchSnapshot> snapshots = await snapshotStore.GetByContentKeysAsync(
+            documentIds,
+            cancellationToken
+        );
+        Dictionary<Guid, RazorSearchSnapshot[]> snapshotsByContentKey = snapshots
+            .GroupBy(x => x.ContentKey)
+            .ToDictionary(x => x.Key, x => x.ToArray());
+
+        return documentIds
+            .Select(documentId =>
+                snapshotsByContentKey.TryGetValue(documentId, out RazorSearchSnapshot[]? contentSnapshots)
+                    ? CreateCandidate(contentSnapshots, contentCache, search, documentId)
+                    : null)
+            .Where(x => x is not null)
+            .Select(x => x!)
+            .ToArray();
     }
 
     private static SearchCandidate? CreateCandidate(
@@ -231,13 +171,14 @@ public sealed class RazorSearchService(
 
     private static bool MatchesCulture(Models.RazorSearch search, RazorSearchSnapshot snapshot)
     {
-        if (string.IsNullOrWhiteSpace(search.Culture))
+        string? requestedCulture = NormalizeCulture(search.Culture);
+        if (requestedCulture is null)
         {
             return true;
         }
 
-        return string.IsNullOrWhiteSpace(snapshot.Culture)
-            || string.Equals(snapshot.Culture, search.Culture, StringComparison.OrdinalIgnoreCase);
+        string? snapshotCulture = NormalizeCulture(snapshot.Culture);
+        return snapshotCulture is null || CulturesMatch(requestedCulture, snapshotCulture);
     }
 
     private static bool MatchesSegment(Models.RazorSearch search, RazorSearchSnapshot snapshot)
@@ -251,60 +192,45 @@ public sealed class RazorSearchService(
             || string.Equals(snapshot.Segment, search.Segment, StringComparison.OrdinalIgnoreCase);
     }
 
-    private Filter[] CreateMetadataFilters(
-        IPublishedContentCache contentCache,
-        IReadOnlySet<Guid> rootKeys,
-        IReadOnlySet<string> includedAliases,
-        IReadOnlySet<string> excludedAliases,
-        out bool canMatch
-    )
+    private Filter[] CreateMetadataFilters(Models.RazorSearch search)
     {
         var filters = new List<Filter>();
-        canMatch = true;
 
-        int[] rootIds = ResolveRootIds(contentCache, rootKeys);
-        if (rootKeys.Count > 0)
+        string[] rootKeyValues = search.RootKeys.Select(x => x.AsKeyword()).ToArray();
+        if (rootKeyValues.Length > 0)
         {
-            if (rootIds.Length == 0)
-            {
-                canMatch = false;
-                return [];
-            }
-
             filters.Add(
-                new IntegerExactFilter(
+                new KeywordFilter(
                     Umbraco.Cms.Search.Core.Constants.FieldNames.PathIds,
-                    rootIds,
+                    rootKeyValues,
                     false
                 )
             );
         }
 
-        int[] includedContentTypeIds = ResolveContentTypeIds(includedAliases);
-        if (includedAliases.Count > 0)
+        string[] includedAliases = search.IncludedContentTypeAliases
+            .Where(x => string.IsNullOrWhiteSpace(x) is false)
+            .Select(x => x.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (includedAliases.Length > 0)
         {
-            if (includedContentTypeIds.Length == 0)
-            {
-                canMatch = false;
-                return [];
-            }
-
             filters.Add(
-                new IntegerExactFilter(
-                    Umbraco.Cms.Search.Core.Constants.FieldNames.ContentTypeId,
-                    includedContentTypeIds,
+                new KeywordFilter(
+                    Constants.InternalIndex.ContentTypeAliasFieldName,
+                    includedAliases,
                     false
                 )
             );
         }
 
-        int[] excludedContentTypeIds = ResolveContentTypeIds(excludedAliases);
-        if (excludedContentTypeIds.Length > 0)
+        string[] excludedAliases = GetEffectiveExcludedAliases(search).ToArray();
+        if (excludedAliases.Length > 0)
         {
             filters.Add(
-                new IntegerExactFilter(
-                    Umbraco.Cms.Search.Core.Constants.FieldNames.ContentTypeId,
-                    excludedContentTypeIds,
+                new KeywordFilter(
+                    Constants.InternalIndex.ContentTypeAliasFieldName,
+                    excludedAliases,
                     true
                 )
             );
@@ -342,30 +268,7 @@ public sealed class RazorSearchService(
             return;
         }
 
-        filters.Add(new KeywordFilter(propertyAlias, ["true", "1", "yes", "on"], true));
-        filters.Add(new TextFilter(propertyAlias, ["true", "1", "yes", "on"], true));
-        filters.Add(new IntegerExactFilter(propertyAlias, [1], true));
-    }
-
-    private static int[] ResolveRootIds(IPublishedContentCache contentCache, IReadOnlySet<Guid> rootKeys) =>
-        rootKeys
-            .Select(contentCache.GetById)
-            .Where(x => x is not null)
-            .Select(x => x!.Id)
-            .Distinct()
-            .ToArray();
-
-    private int[] ResolveContentTypeIds(IReadOnlySet<string> contentTypeAliases)
-    {
-        if (contentTypeAliases.Count == 0)
-        {
-            return [];
-        }
-
-        return contentTypeService
-            .GetAllContentTypeIds(contentTypeAliases.ToArray())
-            .Distinct()
-            .ToArray();
+        filters.Add(new IntegerExactFilter(Constants.InternalIndex.ExcludedFlagFieldName, [1], true));
     }
 
     private static string ResolveTitle(string? culture, SearchCandidate candidate) =>
@@ -377,8 +280,7 @@ public sealed class RazorSearchService(
         IPublishedContent content
     ) =>
         string.IsNullOrWhiteSpace(snapshot.TitleText) is false ? snapshot.TitleText
-        : culture is null ? content.Name
-        : content.Name(culture);
+        : ResolvePublishedName(content, culture, snapshot.Culture);
 
     private static string ResolveUrl(Models.RazorSearch search, SearchCandidate candidate)
     {
@@ -387,7 +289,9 @@ public sealed class RazorSearchService(
             return candidate.Snapshot.FinalUrl;
         }
 
-        string? url = candidate.Content.Url(search.Culture, UrlMode.Absolute);
+        string? url = candidate.Content.Url(
+            NormalizeCulture(candidate.Snapshot.Culture) ?? NormalizeCulture(search.Culture),
+            UrlMode.Absolute);
         return string.IsNullOrWhiteSpace(url) ? candidate.Snapshot.Route : url;
     }
 
@@ -411,7 +315,7 @@ public sealed class RazorSearchService(
             )
             .Where(x => MatchesCulture(search, x))
             .Where(x => MatchesSegment(search, x))
-            .OrderByDescending(x => MatchesExactVariant(search.Culture, x.Culture))
+            .OrderByDescending(x => GetCultureMatchRank(search.Culture, x.Culture))
             .ThenByDescending(x => MatchesExactVariant(search.Segment, x.Segment))
             .ThenByDescending(x => x.UpdatedAtUtc)
             .FirstOrDefault();
@@ -436,6 +340,98 @@ public sealed class RazorSearchService(
     }
 
     private static AccessContext CreateAccessContext() => new(Guid.Empty, []);
+
+    private static string? NormalizeVariant(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value;
+
+    private static string? NormalizeCultureForSearchProvider(string? culture)
+    {
+        string? normalizedCulture = NormalizeCulture(culture);
+        if (normalizedCulture is null)
+        {
+            return null;
+        }
+
+        return IsNeutralCulture(normalizedCulture)
+            ? null
+            : normalizedCulture;
+    }
+
+    private static string ResolvePublishedName(
+        IPublishedContent content,
+        string? requestedCulture,
+        string? snapshotCulture)
+    {
+        string? resolvedCulture = NormalizeCulture(snapshotCulture) ?? NormalizeCulture(requestedCulture);
+        return resolvedCulture is null
+            ? content.Name
+            : content.Name(resolvedCulture);
+    }
+
+    private static int GetCultureMatchRank(string? requestedCulture, string? snapshotCulture)
+    {
+        string? normalizedRequestedCulture = NormalizeCulture(requestedCulture);
+        string? normalizedSnapshotCulture = NormalizeCulture(snapshotCulture);
+
+        if (normalizedRequestedCulture is null)
+        {
+            return normalizedSnapshotCulture is null ? 2 : 1;
+        }
+
+        if (normalizedSnapshotCulture is null)
+        {
+            return 1;
+        }
+
+        if (string.Equals(normalizedRequestedCulture, normalizedSnapshotCulture, StringComparison.OrdinalIgnoreCase))
+        {
+            return 3;
+        }
+
+        return CulturesMatch(normalizedRequestedCulture, normalizedSnapshotCulture) ? 2 : 0;
+    }
+
+    private static bool CulturesMatch(string requestedCulture, string snapshotCulture)
+    {
+        if (string.Equals(requestedCulture, snapshotCulture, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        string requestedLanguage = GetLanguagePart(requestedCulture);
+        string snapshotLanguage = GetLanguagePart(snapshotCulture);
+
+        return string.Equals(requestedLanguage, snapshotLanguage, StringComparison.OrdinalIgnoreCase)
+            && (IsNeutralCulture(requestedCulture) || IsNeutralCulture(snapshotCulture));
+    }
+
+    private static string GetLanguagePart(string culture)
+    {
+        int separatorIndex = culture.IndexOf('-');
+        return separatorIndex < 0 ? culture : culture[..separatorIndex];
+    }
+
+    private static bool IsNeutralCulture(string culture) => culture.Contains('-') is false;
+
+    private static string? NormalizeCulture(string? culture)
+    {
+        string? normalizedCulture = NormalizeVariant(culture);
+        if (normalizedCulture is null)
+        {
+            return null;
+        }
+
+        normalizedCulture = normalizedCulture.Replace('_', '-');
+
+        try
+        {
+            return CultureInfo.GetCultureInfo(normalizedCulture).Name;
+        }
+        catch (CultureNotFoundException)
+        {
+            return normalizedCulture;
+        }
+    }
 
     private sealed record SearchCandidate(
         Guid ContentKey,

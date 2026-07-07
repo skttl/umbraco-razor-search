@@ -72,14 +72,13 @@ Your host must configure:
 
 - `AddSearchCore()`
 - a concrete provider
-- the published content index and searcher used by that provider
+- the provider used by that host application
 
 Without that, RazorSearch cannot return results.
 
-RazorSearch always emits these fixed aliases:
+RazorSearch always emits these fixed searchable aliases inside its internal index:
 
 - `RazorSearch_Title`
-- `RazorSearch_Summary`
 - `RazorSearch_Heading`
 - `RazorSearch_Content`
 
@@ -93,7 +92,7 @@ What it affects:
 
 - queueing
 - snapshot generation
-- index contribution
+- internal RazorSearch index contents
 - runtime search results
 
 Typical use cases:
@@ -448,9 +447,10 @@ Example:
 
 ## Fixed search fields
 
-RazorSearch always writes these fields into Umbraco Search:
+RazorSearch always writes these searchable fields into its internal Umbraco Search index:
 
 - `RazorSearch_Title` using `TextsR1`
-- `RazorSearch_Summary` using `TextsR2`
 - `RazorSearch_Heading` using `TextsR2`
 - `RazorSearch_Content` using `Texts`
+
+`RazorSearch_Summary` remains available from stored snapshots for result rendering, but it is not indexed as a searchable match field.
