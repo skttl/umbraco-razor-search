@@ -1,6 +1,6 @@
 # First beta
 
-Release candidates: 18.0.0-beta.1 and 17.0.0-beta.1, for the matching Umbraco major. Publication follows completion of the release acceptance matrix.
+Release candidate: 17.0.0-beta.1 for Umbraco 17. Publication follows completion of the release acceptance matrix.
 
 - Search rendered HTML through Umbraco Search, with an optional Examine companion.
 - Store one snapshot per document and culture, preserving the last usable text after a rendering error.

@@ -7,10 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Clean" Version="8.0.1" />
+    <PackageReference Include="Clean" Version="7.0.8" />
     <PackageReference Include="Microsoft.ICU.ICU4C.Runtime" Version="72.1.0.3" />
-    <PackageReference Include="Umbraco.Cms" Version="18.1.1" />
-    <PackageReference Include="Umbraco.Cms.Search.Provider.Examine" Version="18.1.0-beta.1" />
+    <PackageReference Include="Umbraco.Cms" Version="17.6.2" />
+    <PackageReference Include="Umbraco.Cms.Search.Provider.Examine" Version="17.1.0-beta.1" />
     <ProjectReference Include="..\Umbraco.Community.RazorSearch.Examine\Umbraco.Community.RazorSearch.Examine.csproj" />
     <ProjectReference Include="..\Umbraco.Community.RazorSearch\Umbraco.Community.RazorSearch.csproj" />
     <RuntimeHostConfigurationOption

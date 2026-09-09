@@ -1,11 +1,11 @@
 # Installation
 
-Use the package line matching the CMS major. `main` targets Umbraco 18.1.1+ and Search Core 18.1.0+. `v17/main` targets Umbraco 17.6.2+ and Search Core 17.1.0+. Both use .NET 10. SQL Server supports single-server and the documented load-balanced topology. SQLite is intended for one app instance but is not release-verified in this beta; see the [known limitations](../release-notes.md).
+This branch targets Umbraco 17.6.2+ and Search Core 17.1.0+ within the 17.x line. It uses .NET 10. SQL Server supports single-server and the documented load-balanced topology. SQLite is intended for one app instance but is not release-verified in this beta; see the [known limitations](../release-notes.md).
 
 ## Examine application
 
 ```powershell
-dotnet add package Umbraco.Community.RazorSearch.Examine --version 18.0.0-beta.1
+dotnet add package Umbraco.Community.RazorSearch.Examine --version 17.0.0-beta.1
 ```
 
 The companion installs core transitively. For Umbraco 17 use `17.0.0-beta.1`. During local acceptance, install from the `artifacts/packages` feed produced by `build/Validate.ps1`; these versions are not available on NuGet until published.

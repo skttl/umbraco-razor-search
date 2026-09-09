@@ -38,7 +38,7 @@ Supply `appsettings.json` in that temporary folder:
 
 For SQLite, use an absolute path such as `Data Source=C:/temporary/acceptance/acceptance.db` and provider `Microsoft.Data.Sqlite`; create the parent directory first. Never reuse an existing site's connection string. Create the isolated SQL Server database before starting the app.
 
-Build with `dotnet build -p:UmbracoVersion=18.1.1 -p:RazorSearchVersion=18.0.0-beta.1`; supply the corresponding 17 versions to test that line. Start the resulting DLL from the temporary app directory.
+Build with `dotnet build -p:UmbracoVersion=17.6.2 -p:RazorSearchVersion=17.0.0-beta.1`. Start the resulting DLL from the temporary app directory.
 
 Poll `GET /acceptance/health` until `ready` is true before seeding or mutating content. Stop if `bootFailed` is true. A listening host or `RuntimeLevel.Run` alone does not establish readiness: unattended upgrades can still be running application-starting handlers, including RazorSearch migrations. Mutation endpoints return HTTP 503 until routing is ready.
 

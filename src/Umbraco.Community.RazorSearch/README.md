@@ -2,12 +2,12 @@
 
 Search rendered Umbraco pages with Umbraco Search. RazorSearch stores HTML snapshots, extracts title, headings and body text, and contributes them to a dedicated search index.
 
-This branch targets Umbraco 18.1.1+ within 18.x, .NET 10 and Umbraco Search Core 18.1.0+. Use `v17/main` and the 17.x package line for Umbraco 17. The first releases are beta packages. SQLite is not release-verified in this beta; known concurrency limitations are recorded in the release notes.
+This branch targets Umbraco 17.6.2+ within 17.x, .NET 10 and Umbraco Search Core 17.1.0+. The first releases are beta packages. SQLite is not release-verified in this beta; known concurrency limitations are recorded in the release notes.
 
 ## Install with Examine
 
 ```powershell
-dotnet add package Umbraco.Community.RazorSearch.Examine --version 18.0.0-beta.1
+dotnet add package Umbraco.Community.RazorSearch.Examine --version 17.0.0-beta.1
 ```
 
 The companion includes the core package and creates its physical Examine index. Enable Search and the provider in the consuming application's `Program.cs`:

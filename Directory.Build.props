@@ -1,5 +1,5 @@
 <Project>
   <PropertyGroup>
-    <UmbracoMajorVersion>18</UmbracoMajorVersion>
+    <UmbracoMajorVersion>17</UmbracoMajorVersion>
   </PropertyGroup>
 </Project>

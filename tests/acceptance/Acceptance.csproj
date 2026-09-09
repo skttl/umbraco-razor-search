@@ -4,8 +4,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <UmbracoVersion Condition="'$(UmbracoVersion)' == ''">18.1.1</UmbracoVersion>
-    <RazorSearchVersion Condition="'$(RazorSearchVersion)' == ''">18.0.0-beta.1</RazorSearchVersion>
+    <UmbracoVersion Condition="'$(UmbracoVersion)' == ''">17.6.2</UmbracoVersion>
+    <RazorSearchVersion Condition="'$(RazorSearchVersion)' == ''">17.0.0-beta.1</RazorSearchVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Umbraco.Cms" Version="$(UmbracoVersion)" />
