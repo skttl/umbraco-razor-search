@@ -1,3 +1,4 @@
+import type { UmbDocumentUserPermissionConditionConfig } from "@umbraco-cms/backoffice/document";
 import type { ManifestEntityAction } from "@umbraco-cms/backoffice/entity-action";
 import type { ManifestMenuItem } from "@umbraco-cms/backoffice/menu";
 import type { ManifestModal } from "@umbraco-cms/backoffice/modal";
@@ -30,6 +31,7 @@ const manifests: Array<
     weight: 200,
     api: () => import("./razor-search-entity-action.js"),
     forEntityTypes: ["document"],
+    conditions: [{ alias: "Umb.Condition.UserPermission.Document", allOf: ["Umb.Document.Publish"] } satisfies UmbDocumentUserPermissionConditionConfig],
     meta: {
       icon: "icon-search",
       label: "Queue RazorSearch job",
@@ -57,6 +59,7 @@ const manifests: Array<
     type: "menuItem",
     alias: "Umbraco.Community.RazorSearch.MenuItem.Settings",
     name: "RazorSearch Settings Menu Item",
+    conditions: [{ alias: "Umb.Condition.CurrentUser.IsAdmin" }],
     weight: 401,
     meta: {
       label: "RazorSearch",
@@ -87,6 +90,7 @@ const manifests: Array<
       icon: "icon-search",
     },
     conditions: [
+      { alias: "Umb.Condition.CurrentUser.IsAdmin" },
       {
         alias: UMB_WORKSPACE_CONDITION_ALIAS,
         match: RAZOR_SEARCH_WORKSPACE_ALIAS,

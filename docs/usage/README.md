@@ -1,198 +1,103 @@
 # Usage
 
-RazorSearch is consumed through `IRazorSearchService` and the `RazorSearch` request model.
+Inject `IRazorSearchService` and call `SearchAsync` with a `Umbraco.Community.RazorSearch.Models.RazorSearch` request.
 
-The usual flow is:
+## Complete search template
 
-1. inject `IRazorSearchService`
-2. create a `RazorSearch` request
-3. add scope, culture, or paging as needed
-4. call `SearchAsync(...)`
-5. render the returned items
-
-## Inject the service
-
-```csharp
-using Umbraco.Community.RazorSearch;
-
-public sealed class SearchController : RenderController
-{
-    private readonly IRazorSearchService _razorSearchService;
-
-    public SearchController(
-        IRazorSearchService razorSearchService,
-        ILogger<RenderController> logger,
-        ICompositeViewEngine compositeViewEngine,
-        IUmbracoContextAccessor umbracoContextAccessor)
-        : base(logger, compositeViewEngine, umbracoContextAccessor)
-    {
-        _razorSearchService = razorSearchService;
-    }
-}
-```
-
-## Search from a controller
-
-```csharp
-using Umbraco.Community.RazorSearch;
-
-public override async Task<IActionResult> Index()
-{
-    var searchPage = CurrentPage as ContentModels.Search;
-    string query = Request.Query["q"].ToString();
-
-    if (string.IsNullOrWhiteSpace(query))
-    {
-        searchPage!.SearchResult = null;
-        return CurrentTemplate(searchPage);
-    }
-
-    int.TryParse(Request.Query["p"].ToString(), out int pageNumber);
-    pageNumber = pageNumber < 1 ? 1 : pageNumber;
-
-    var search = new RazorSearch(query)
-        .InCulture(CurrentPage.GetCultureFromDomains())
-        .UnderRoot(CurrentPage.Root().Key)
-        .ExcludeContentTypes("folder", "searchPage")
-        .Page(pageNumber, 10);
-
-    searchPage!.SearchResult = await _razorSearchService.SearchAsync(search);
-    return CurrentTemplate(searchPage);
-}
-```
-
-## Search from any service or controller
-
-The same API works outside `RenderController`:
-
-```csharp
-using Umbraco.Community.RazorSearch;
-using Umbraco.Community.RazorSearch.Models;
-
-public sealed class SearchFacade(IRazorSearchService razorSearchService)
-{
-    public Task<IRazorSearchResult> SearchSiteAsync(string query, Guid rootKey, string culture, CancellationToken cancellationToken)
-    {
-        var search = new RazorSearch(query)
-            .UnderRoot(rootKey)
-            .InCulture(culture)
-            .Page(1, 20);
-
-        return razorSearchService.SearchAsync(search, cancellationToken);
-    }
-}
-```
-
-## Render results
+Create an Umbraco document type with a template containing the following Razor. The document type can be invariant or vary by culture. Publish the search page and some other pages, then rebuild snapshots.
 
 ```cshtml
+@inherits Umbraco.Cms.Web.Common.Views.UmbracoViewPage
+@using Umbraco.Community.RazorSearch
 @using Umbraco.Community.RazorSearch.Models
-@if (Model.SearchResult is IRazorSearchResult result && result.Items.Count > 0)
-{
-    <p>@result.Total result(s)</p>
-
-    <ul>
-    @foreach (var item in result.Items)
+@using Umbraco.Extensions
+@inject IRazorSearchService SearchService
+@{
+    Layout = null;
+    string query = Context.Request.Query["q"].ToString();
+    int.TryParse(Context.Request.Query["page"].ToString(), out int page);
+    page = Math.Max(1, page);
+    IRazorSearchResult? results = null;
+    if (!string.IsNullOrWhiteSpace(query))
     {
-        <li>
-            <a href="@item.Url">@item.Title</a>
-            <div>@Html.Raw(item.SummaryHtml)</div>
-        </li>
+        var request = new RazorSearch(query)
+            .UnderRoot(Model.Root().Key)
+            .Page(page, 10);
+        string? culture = Model.GetCultureFromDomains();
+        if (!string.IsNullOrWhiteSpace(culture))
+        {
+            request.InCulture(culture);
+        }
+        results = await SearchService.SearchAsync(request, Context.RequestAborted);
     }
-    </ul>
 }
-else
-{
-    <p>No results found.</p>
-}
+<!DOCTYPE html>
+<html>
+<head><title>Search</title></head>
+<body>
+<main>
+    <form method="get">
+        <label for="q">Search</label>
+        <input id="q" name="q" value="@query" />
+        <button type="submit">Search</button>
+    </form>
+    @if (results is not null)
+    {
+        <p>@results.Total results</p>
+        <ul>
+        @foreach (var item in results.Items)
+        {
+            <li>
+                <a href="@item.Url">@item.Title</a>
+                <div>@Html.Raw(item.SummaryHtml)</div>
+            </li>
+        }
+        </ul>
+        @if ((long)page * 10 < results.Total)
+        {
+            <a href="?q=@Uri.EscapeDataString(query)&amp;page=@(page + 1)">Next page</a>
+        }
+    }
+</main>
+</body>
+</html>
 ```
 
-## Use render-only markup in views
+Razor views support `await`. Do not override `RenderController.Index()` with `Task<IActionResult>`; its override returns `IActionResult`. Use an async Razor view, an async view component, or a separate MVC action when composing search results.
 
-If you want markup to appear only during RazorSearch rendering, use `SearchRenderingContext.IsActive`:
+## Culture
+
+| Request | Eligible documents |
+| --- | --- |
+| No `InCulture` | Invariant documents only |
+| `InCulture("da-DK")` | Danish and invariant documents |
+| `InCulture("en-US")` | English and invariant documents |
+| `InCulture("da")` when only `da-DK` exists | Validation error |
+
+Culture matching is case-insensitive and normalized to the configured language. There is no neutral-language expansion or implicit default/request-language fallback. Invariant properties on a variant document do not turn it into an invariant document. Segments and member-personalized search are not supported. Search uses an anonymous access context, excluding protected content.
+
+## Filters and pagination
+
+`UnderRoot` and `UnderRoots` take document GUID keys, not integer IDs. Use `IncludeContentType(s)` and `ExcludeContentType(s)` for aliases. Filters and culture apply before provider pagination. `Page(pageNumber, pageSize)` is one-based; `SkipTake(skip, take)` is zero-based. A page beyond the final result keeps the total and returns no items.
+
+`SearchAsync` rejects an empty query, a page size below `1`, a negative skip value and empty root GUIDs. A culture must match one of the configured Umbraco languages.
+
+`IRazorSearchResultItem` exposes `ContentKey`, `Content`, `Url`, `Title` and `SummaryHtml`. Provider scores and raw fields are not part of the public result contract. `SummaryHtml` encodes extracted content before inserting the configured highlight markup. Treat `HighlightPattern` as trusted application configuration.
+
+Result URLs come from Umbraco's URL provider for the current published content. Variant results use the requested configured culture; invariant results resolve their URL without forcing that variant culture. The internal `HttpRenderer:RenderBaseAddress` is only the rendering destination and is not a result URL. Stored snapshot URLs are rendering metadata, not a fallback to an earlier route after a move or rename.
+
+The rendered content can then be searched through the normal site experience, with matching text highlighted in the result summary:
+
+![RazorSearch search results](../../assets/marketplace/razorsearch-search-results.png)
+
+## Rendering context
 
 ```cshtml
 @using Umbraco.Community.RazorSearch
-
-@if (SearchRenderingContext.IsActive)
+@if (!SearchRenderingContext.IsActive)
 {
-    <div>This text is only included in RazorSearch rendering.</div>
+    <aside>This promotion is omitted from search rendering.</aside>
 }
 ```
 
-Important:
-
-- this only becomes active when the incoming request carries the expected render token
-- with the built-in HTTP renderer, RazorSearch sends that token automatically
-- configure `RazorSearch:RenderRequestToken` only if you want to override the default fallback token
-
-## Hide site-only markup from search snapshots
-
-This pattern is useful when you want RazorSearch rendering to omit markup that should not affect the extracted search text.
-
-Example view:
-
-```cshtml
-@using Umbraco.Community.RazorSearch
-
-<article>
-    <h1>@Model.Value("pageTitle")</h1>
-
-    @if (SearchRenderingContext.IsActive is false)
-    {
-        <aside class="promo-banner">
-            Sign up for our newsletter
-        </aside>
-    }
-</article>
-```
-
-In this case, the promo markup is shown on the site, but not when RazorSearch renders the page for snapshot extraction.
-
-You can also combine `SearchRenderingContext.IsActive` with `RemoveSelectors` when you need search-only helper markup during rendering and want to strip it before extraction.
-
-Example:
-
-```json
-{
-  "RazorSearch": {
-    "SnapshotExtraction": {
-      "BodySources": [
-        { "Type": "selector", "Selector": "body" }
-      ],
-      "RemoveSelectors": [".razor-search-only"]
-    }
-  }
-}
-```
-
-How it works:
-
-- `SearchRenderingContext.IsActive` lets your view render less markup during RazorSearch snapshot generation
-- this is often the simplest way to exclude banners, navigation fragments, or other non-search content
-- `RemoveSelectors` is still useful when markup must exist during rendering, but should be stripped before text extraction
-
-Use this when you want search rendering to be cleaner than the public page output.
-
-## Common request options
-
-The current `RazorSearch` request model supports:
-
-- `InCulture(...)`
-- `UnderRoot(...)`
-- `UnderRoots(...)`
-- `IncludeContentType(...)`
-- `IncludeContentTypes(...)`
-- `ExcludeContentType(...)`
-- `ExcludeContentTypes(...)`
-- `Page(pageNumber, pageSize)`
-- `SkipTake(skip, take)`
-
-## Validation rules
-
-`SearchAsync(...)` validates the request and will throw if:
-
-- the query text is empty
-- `Take` is less than `1`
-- `Skip` is negative
-- any root key is an empty `Guid`
+The built-in renderer sends an authenticated rendering header. A single app instance can use its generated token. Configure `Umbraco:Community:RazorSearch:RenderRequestToken` explicitly when rendering across app instances. The same token must be configured on both ends.

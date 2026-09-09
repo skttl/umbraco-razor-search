@@ -4,9 +4,9 @@ namespace Umbraco.Community.RazorSearch.Api;
 
 public interface IRazorSearchManagementService
 {
-    Task<QueueRazorSearchDocumentResponse> QueueDocumentAsync(Guid documentId, bool includeDescendants, int? maxDocuments, CancellationToken cancellationToken);
+    Task<QueueRazorSearchDocumentResponse> QueueDocumentAsync(Guid documentId, bool includeDescendants, Guid userKey, CancellationToken cancellationToken);
 
-    Task<QueueRazorSearchPublishedContentResponse> QueuePublishedContentAsync(int? maxDocuments, CancellationToken cancellationToken);
+    Task<QueueRazorSearchPublishedContentResponse> QueuePublishedContentAsync(Guid userKey, CancellationToken cancellationToken);
 
     Task<RazorSearchDocumentStatusResponse> GetDocumentStatusAsync(Guid documentId, CancellationToken cancellationToken);
 

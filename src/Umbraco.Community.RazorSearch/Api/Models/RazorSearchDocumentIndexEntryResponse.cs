@@ -4,11 +4,7 @@ public sealed class RazorSearchDocumentIndexEntryResponse
 {
     public string? Culture { get; init; }
 
-    public string? Segment { get; init; }
-
     public IReadOnlyCollection<string> Titles { get; init; } = [];
-
-    public IReadOnlyCollection<string> Summaries { get; init; } = [];
 
     public IReadOnlyCollection<string> Headings { get; init; } = [];
 

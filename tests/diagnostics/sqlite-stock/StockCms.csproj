@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <UmbracoVersion Condition="'$(UmbracoVersion)' == ''">17.6.2</UmbracoVersion>
+  </PropertyGroup>
+  <ItemGroup><PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.12" />
+    <PackageReference Include="Umbraco.Cms" Version="$(UmbracoVersion)" />
+  </ItemGroup>
+</Project>
+
+
+

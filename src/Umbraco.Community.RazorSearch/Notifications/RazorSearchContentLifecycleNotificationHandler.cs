@@ -6,11 +6,9 @@ using Umbraco.Cms.Core.Models;
 using Umbraco.Cms.Core.Models.PublishedContent;
 using Umbraco.Cms.Core.Notifications;
 using Umbraco.Cms.Core.Services;
+using Umbraco.Cms.Core.Sync;
 using Umbraco.Cms.Core.Web;
-using Umbraco.Cms.Search.Core.Models.Indexing;
-using Umbraco.Cms.Search.Core.Services.ContentIndexing;
 using Umbraco.Community.RazorSearch.Models;
-using Umbraco.Community.RazorSearch.Persistence.Models;
 using Umbraco.Community.RazorSearch.Persistence.Stores;
 using Umbraco.Community.RazorSearch.Searching;
 using Umbraco.Community.RazorSearch.Services;
@@ -20,352 +18,76 @@ namespace Umbraco.Community.RazorSearch.Notifications;
 
 internal sealed class RazorSearchContentLifecycleNotificationHandler(
     IServiceScopeFactory serviceScopeFactory,
+    IServerRoleAccessor serverRoleAccessor,
     ILogger<RazorSearchContentLifecycleNotificationHandler> logger)
     : INotificationAsyncHandler<ContentPublishedNotification>,
-        INotificationAsyncHandler<ContentUnpublishedNotification>,
-        INotificationAsyncHandler<ContentDeletedNotification>,
-        INotificationAsyncHandler<ContentMovedNotification>,
-        INotificationAsyncHandler<ContentMovedToRecycleBinNotification>
+      INotificationAsyncHandler<ContentUnpublishedNotification>,
+      INotificationAsyncHandler<ContentDeletedNotification>,
+      INotificationAsyncHandler<ContentMovedNotification>,
+      INotificationAsyncHandler<ContentMovedToRecycleBinNotification>
 {
-    public async Task HandleAsync(ContentPublishedNotification notification, CancellationToken cancellationToken)
+    public Task HandleAsync(ContentPublishedNotification notification, CancellationToken cancellationToken) =>
+        SynchronizeAsync(notification.PublishedEntities, false, cancellationToken);
+    public Task HandleAsync(ContentUnpublishedNotification notification, CancellationToken cancellationToken) =>
+        SynchronizeAsync(notification.UnpublishedEntities, false, cancellationToken);
+    public Task HandleAsync(ContentDeletedNotification notification, CancellationToken cancellationToken) =>
+        SynchronizeAsync(notification.DeletedEntities, true, cancellationToken);
+    public Task HandleAsync(ContentMovedNotification notification, CancellationToken cancellationToken) =>
+        SynchronizeAsync(notification.MoveInfoCollection.Select(x => x.Entity), false, cancellationToken);
+    public Task HandleAsync(ContentMovedToRecycleBinNotification notification, CancellationToken cancellationToken) =>
+        SynchronizeAsync(notification.MoveInfoCollection.Select(x => x.Entity), true, cancellationToken);
+
+    private async Task SynchronizeAsync(IEnumerable<IContent> roots, bool remove, CancellationToken cancellationToken)
     {
-        await using AsyncServiceScope scope = serviceScopeFactory.CreateAsyncScope();
-        IRazorSearchRenderQueue renderQueue = scope.ServiceProvider.GetRequiredService<IRazorSearchRenderQueue>();
-        IRazorSearchSnapshotStore snapshotStore = scope.ServiceProvider.GetRequiredService<IRazorSearchSnapshotStore>();
-        IUmbracoContextFactory umbracoContextFactory = scope.ServiceProvider.GetRequiredService<IUmbracoContextFactory>();
-        IRazorSearchContentFilter contentFilter = scope.ServiceProvider.GetRequiredService<IRazorSearchContentFilter>();
-
-        IContent[] publishedEntities = notification.PublishedEntities
-            .DistinctBy(x => x.Key)
-            .ToArray();
-
-        int deletedSnapshotCount = 0;
-
-        foreach (IContent content in publishedEntities)
+        if (serverRoleAccessor.CurrentServerRole is not (ServerRole.Single or ServerRole.SchedulingPublisher)) return;
+        await using var scope = serviceScopeFactory.CreateAsyncScope();
+        var services = scope.ServiceProvider;
+        var contentService = services.GetRequiredService<IContentService>();
+        var store = services.GetRequiredService<IRazorSearchSnapshotStore>();
+        var queue = services.GetRequiredService<IRazorSearchRenderQueue>();
+        var backgroundQueue = services.GetRequiredService<IBackgroundRazorSearchRenderQueue>();
+        var coordinator = services.GetRequiredService<RazorSearchWorkCoordinator>();
+        var contextFactory = services.GetRequiredService<IUmbracoContextFactory>();
+        var filter = services.GetRequiredService<IRazorSearchContentFilter>();
+        // Descendant routes can change when any ancestor is renamed or moved.
+        foreach (IContent item in Expand(contentService, roots).DistinctBy(x => x.Key))
         {
-            deletedSnapshotCount += await DeleteSnapshotsForUnpublishedCulturesAsync(notification, content, snapshotStore, cancellationToken);
-            deletedSnapshotCount += await DeleteSnapshotsForExcludedPublishedVariantsAsync(
-                content,
-                umbracoContextFactory,
-                snapshotStore,
-                contentFilter,
-                cancellationToken);
-        }
-
-        await EnqueuePublishedContentAsync(
-            renderQueue,
-            umbracoContextFactory,
-            publishedEntities,
-            contentFilter,
-            force: false,
-            cancellationToken);
-
-        logger.LogDebug(
-            "Queued RazorSearch synchronization for {PublishedCount} published content item(s) after deleting {DeletedSnapshotCount} excluded or unpublished snapshot(s).",
-            publishedEntities.Length,
-            deletedSnapshotCount);
-    }
-
-    public async Task HandleAsync(ContentUnpublishedNotification notification, CancellationToken cancellationToken)
-    {
-        await using AsyncServiceScope scope = serviceScopeFactory.CreateAsyncScope();
-        IRazorSearchSnapshotStore snapshotStore = scope.ServiceProvider.GetRequiredService<IRazorSearchSnapshotStore>();
-
-        int deletedSnapshotCount = 0;
-
-        foreach (IContent content in notification.UnpublishedEntities.DistinctBy(x => x.Key))
-        {
-            if (content.Published is false)
+            using (await coordinator.EnterAsync(item.Key, cancellationToken)) backgroundQueue.Invalidate(item.Key);
+            using var context = contextFactory.EnsureUmbracoContext();
+            IPublishedContent? published = context.UmbracoContext.Content?.GetById(item.Key);
+            if (remove || published is null || item.Trashed || !item.Published || filter.IsExcludedContentType(published.ContentType.Alias))
+            { await store.DeleteByContentKeyAsync(item.Key, cancellationToken); continue; }
+            var routes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            IEnumerable<string?> cultures = RazorSearchPublishedCultures.Get(published);
+            foreach (string? culture in cultures)
             {
-                deletedSnapshotCount += await snapshotStore.DeleteByContentKeyAsync(content.Key, cancellationToken);
-                continue;
+                string route = published.Url(culture, UrlMode.Absolute);
+                if (!filter.IsExcluded(published, culture) && !string.IsNullOrWhiteSpace(route) && !route.StartsWith('#'))
+                    routes[culture ?? string.Empty] = route;
             }
-
-            deletedSnapshotCount += await DeleteSnapshotsForUnpublishedCulturesAsync(
-                notification,
-                content,
-                snapshotStore,
-                cancellationToken);
+            foreach (var snapshot in await store.GetByContentKeyAsync(item.Key, cancellationToken))
+                if (!routes.ContainsKey(snapshot.Culture ?? string.Empty)) await store.DeleteAsync(snapshot.Id, cancellationToken);
+            foreach (var route in routes)
+                await queue.EnqueueAsync(new RazorSearchRenderRequest { ContentKey = item.Key,
+                    Culture = route.Key.Length == 0 ? null : route.Key, Route = route.Value }, cancellationToken);
         }
-
-        logger.LogDebug(
-            "Deleted {DeletedSnapshotCount} RazorSearch snapshot(s) after content unpublish.",
-            deletedSnapshotCount);
+        logger.LogDebug("Synchronized RazorSearch snapshots and queued current published routes after a content lifecycle change.");
     }
 
-    public async Task HandleAsync(ContentDeletedNotification notification, CancellationToken cancellationToken)
+    private static IEnumerable<IContent> Expand(IContentService service, IEnumerable<IContent> roots)
     {
-        await using AsyncServiceScope scope = serviceScopeFactory.CreateAsyncScope();
-        IRazorSearchSnapshotStore snapshotStore = scope.ServiceProvider.GetRequiredService<IRazorSearchSnapshotStore>();
-        IDistributedContentIndexRefresher distributedContentIndexRefresher = scope.ServiceProvider.GetRequiredService<IDistributedContentIndexRefresher>();
-
-        IContent[] deletedEntities = notification.DeletedEntities
-            .DistinctBy(x => x.Key)
-            .ToArray();
-
-        int deletedSnapshotCount = await DeleteSnapshotsByContentKeysAsync(
-            snapshotStore,
-            deletedEntities.Select(x => x.Key),
-            cancellationToken);
-
-        distributedContentIndexRefresher.RefreshContent(deletedEntities, ContentState.Published);
-
-        logger.LogDebug(
-            "Deleted {DeletedSnapshotCount} RazorSearch snapshot(s) after content delete.",
-            deletedSnapshotCount);
-    }
-
-    public async Task HandleAsync(ContentMovedNotification notification, CancellationToken cancellationToken)
-    {
-        await using AsyncServiceScope scope = serviceScopeFactory.CreateAsyncScope();
-        IRazorSearchRenderQueue renderQueue = scope.ServiceProvider.GetRequiredService<IRazorSearchRenderQueue>();
-        IRazorSearchSnapshotStore snapshotStore = scope.ServiceProvider.GetRequiredService<IRazorSearchSnapshotStore>();
-        IContentService contentService = scope.ServiceProvider.GetRequiredService<IContentService>();
-        IUmbracoContextFactory umbracoContextFactory = scope.ServiceProvider.GetRequiredService<IUmbracoContextFactory>();
-
-        IContent[] movedRoots = notification.MoveInfoCollection
-            .Select(x => x.Entity)
-            .DistinctBy(x => x.Key)
-            .ToArray();
-
-        IReadOnlyCollection<IContent> affectedContent = ExpandContentTree(contentService, movedRoots);
-        int deletedSnapshotCount = await DeleteSnapshotsByContentKeysAsync(
-            snapshotStore,
-            affectedContent.Select(x => x.Key),
-            cancellationToken);
-
-        await EnqueuePublishedContentAsync(
-            renderQueue,
-            umbracoContextFactory,
-            affectedContent,
-            scope.ServiceProvider.GetRequiredService<IRazorSearchContentFilter>(),
-            force: true,
-            cancellationToken);
-
-        logger.LogDebug(
-            "Deleted {DeletedSnapshotCount} RazorSearch snapshot(s) and queued synchronization for {AffectedCount} moved content item(s).",
-            deletedSnapshotCount,
-            affectedContent.Count);
-    }
-
-    public async Task HandleAsync(ContentMovedToRecycleBinNotification notification, CancellationToken cancellationToken)
-    {
-        await using AsyncServiceScope scope = serviceScopeFactory.CreateAsyncScope();
-        IRazorSearchSnapshotStore snapshotStore = scope.ServiceProvider.GetRequiredService<IRazorSearchSnapshotStore>();
-        IContentService contentService = scope.ServiceProvider.GetRequiredService<IContentService>();
-
-        IContent[] movedRoots = notification.MoveInfoCollection
-            .Select(x => x.Entity)
-            .DistinctBy(x => x.Key)
-            .ToArray();
-
-        IReadOnlyCollection<IContent> affectedContent = ExpandContentTree(contentService, movedRoots);
-        int deletedSnapshotCount = await DeleteSnapshotsByContentKeysAsync(
-            snapshotStore,
-            affectedContent.Select(x => x.Key),
-            cancellationToken);
-
-        logger.LogDebug(
-            "Deleted {DeletedSnapshotCount} RazorSearch snapshot(s) after moving {AffectedCount} content item(s) to the recycle bin.",
-            deletedSnapshotCount,
-            affectedContent.Count);
-    }
-
-    private static IReadOnlyCollection<IContent> ExpandContentTree(IContentService contentService, IEnumerable<IContent> roots)
-    {
-        Dictionary<Guid, IContent> contentByKey = roots.ToDictionary(x => x.Key, x => x);
-
         foreach (IContent root in roots)
         {
-            foreach (IContent descendant in GetDescendants(contentService, root))
+            yield return root;
+            long pageIndex = 0;
+            const int pageSize = 128;
+            while (true)
             {
-                contentByKey.TryAdd(descendant.Key, descendant);
+                IContent[] page = service.GetPagedDescendants(root.Id, pageIndex, pageSize, out long total,
+                    filter: null, ordering: Ordering.By("id", Direction.Ascending)).ToArray();
+                foreach (IContent descendant in page) yield return descendant;
+                if (page.Length == 0 || ++pageIndex * pageSize >= total) break;
             }
         }
-
-        return contentByKey.Values.ToArray();
-    }
-
-    private static IEnumerable<IContent> GetDescendants(IContentService contentService, IContent rootContent)
-    {
-        long pageIndex = 0;
-        const int pageSize = 128;
-
-        while (true)
-        {
-            IEnumerable<IContent> descendants = contentService.GetPagedDescendants(
-                rootContent.Id,
-                pageIndex,
-                pageSize,
-                out long totalRecords,
-                filter: null,
-                ordering: Ordering.ByDefault());
-
-            IContent[] page = descendants.ToArray();
-            if (page.Length == 0)
-            {
-                yield break;
-            }
-
-            foreach (IContent descendant in page)
-            {
-                yield return descendant;
-            }
-
-            pageIndex++;
-            if (pageIndex * pageSize >= totalRecords)
-            {
-                yield break;
-            }
-        }
-    }
-
-    private static async Task EnqueuePublishedContentAsync(
-        IRazorSearchRenderQueue renderQueue,
-        IUmbracoContextFactory umbracoContextFactory,
-        IEnumerable<IContent> contentItems,
-        IRazorSearchContentFilter contentFilter,
-        bool force,
-        CancellationToken cancellationToken)
-    {
-        using UmbracoContextReference contextReference = umbracoContextFactory.EnsureUmbracoContext();
-
-        foreach (IContent contentItem in contentItems.DistinctBy(x => x.Key))
-        {
-            IPublishedContent? publishedContent = contextReference.UmbracoContext.Content?.GetById(contentItem.Key);
-            if (publishedContent is null)
-            {
-                continue;
-            }
-
-            if (contentFilter.IsExcluded(publishedContent))
-            {
-                continue;
-            }
-
-            IEnumerable<string?> cultures = publishedContent.Cultures.Count > 0
-                ? publishedContent.Cultures.Keys.Cast<string?>()
-                : [null];
-
-            foreach (string? culture in cultures.Distinct(StringComparer.OrdinalIgnoreCase))
-            {
-                if (contentFilter.IsExcluded(publishedContent, culture))
-                {
-                    continue;
-                }
-
-                string route = publishedContent.Url(culture, UrlMode.Absolute);
-                if (string.IsNullOrWhiteSpace(route) || route.StartsWith('#'))
-                {
-                    continue;
-                }
-
-                await renderQueue.EnqueueAsync(
-                    new RazorSearchRenderRequest
-                    {
-                        ContentKey = contentItem.Key,
-                        Culture = culture,
-                        Route = route,
-                        Force = force,
-                    },
-                    cancellationToken);
-            }
-        }
-    }
-
-    private static async Task<int> DeleteSnapshotsForUnpublishedCulturesAsync(
-        ContentPublishedNotification notification,
-        IContent content,
-        IRazorSearchSnapshotStore snapshotStore,
-        CancellationToken cancellationToken)
-    {
-        IReadOnlyCollection<RazorSearchSnapshot> snapshots = await snapshotStore.GetByContentKeyAsync(content.Key, cancellationToken);
-        int deletedSnapshotCount = 0;
-
-        foreach (RazorSearchSnapshot snapshot in snapshots)
-        {
-            if (string.IsNullOrWhiteSpace(snapshot.Culture)
-                || notification.HasUnpublishedCulture(content, snapshot.Culture) is false)
-            {
-                continue;
-            }
-
-            deletedSnapshotCount += await snapshotStore.DeleteAsync(snapshot.Id, cancellationToken) ? 1 : 0;
-        }
-
-        return deletedSnapshotCount;
-    }
-
-    private static async Task<int> DeleteSnapshotsForExcludedPublishedVariantsAsync(
-        IContent content,
-        IUmbracoContextFactory umbracoContextFactory,
-        IRazorSearchSnapshotStore snapshotStore,
-        IRazorSearchContentFilter contentFilter,
-        CancellationToken cancellationToken)
-    {
-        using UmbracoContextReference contextReference = umbracoContextFactory.EnsureUmbracoContext();
-        IPublishedContent? publishedContent = contextReference.UmbracoContext.Content?.GetById(content.Key);
-        if (publishedContent is null)
-        {
-            return 0;
-        }
-
-        if (contentFilter.IsExcluded(publishedContent))
-        {
-            return await snapshotStore.DeleteByContentKeyAsync(content.Key, cancellationToken);
-        }
-
-        IReadOnlyCollection<RazorSearchSnapshot> snapshots = await snapshotStore.GetByContentKeyAsync(content.Key, cancellationToken);
-        int deletedSnapshotCount = 0;
-
-        foreach (RazorSearchSnapshot snapshot in snapshots)
-        {
-            if (contentFilter.IsExcluded(publishedContent, snapshot.Culture, snapshot.Segment) is false)
-            {
-                continue;
-            }
-
-            deletedSnapshotCount += await snapshotStore.DeleteAsync(snapshot.Id, cancellationToken) ? 1 : 0;
-        }
-
-        return deletedSnapshotCount;
-    }
-
-    private static async Task<int> DeleteSnapshotsForUnpublishedCulturesAsync(
-        ContentUnpublishedNotification notification,
-        IContent content,
-        IRazorSearchSnapshotStore snapshotStore,
-        CancellationToken cancellationToken)
-    {
-        IReadOnlyCollection<RazorSearchSnapshot> snapshots = await snapshotStore.GetByContentKeyAsync(content.Key, cancellationToken);
-        int deletedSnapshotCount = 0;
-
-        foreach (RazorSearchSnapshot snapshot in snapshots)
-        {
-            if (string.IsNullOrWhiteSpace(snapshot.Culture)
-                || notification.HasUnpublishedCulture(content, snapshot.Culture) is false)
-            {
-                continue;
-            }
-
-            deletedSnapshotCount += await snapshotStore.DeleteAsync(snapshot.Id, cancellationToken) ? 1 : 0;
-        }
-
-        return deletedSnapshotCount;
-    }
-
-    private static async Task<int> DeleteSnapshotsByContentKeysAsync(
-        IRazorSearchSnapshotStore snapshotStore,
-        IEnumerable<Guid> contentKeys,
-        CancellationToken cancellationToken)
-    {
-        int deletedSnapshotCount = 0;
-
-        foreach (Guid contentKey in contentKeys.Distinct())
-        {
-            deletedSnapshotCount += await snapshotStore.DeleteByContentKeyAsync(contentKey, cancellationToken);
-        }
-
-        return deletedSnapshotCount;
     }
 }

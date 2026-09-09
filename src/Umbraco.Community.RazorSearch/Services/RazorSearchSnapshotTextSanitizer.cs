@@ -1,4 +1,5 @@
 using System.Net;
+using AngleSharp.Dom;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -13,9 +14,10 @@ internal static partial class RazorSearchSnapshotTextSanitizer
         string html,
         string sourceUrl,
         string? finalUrl,
-        RazorSearchSnapshotExtractionContext? context = null)
+        RazorSearchSnapshotExtractionContext? context = null,
+        RazorSearchSnapshotExtractionOptions? extractionOptions = null)
     {
-        RazorSearchSnapshotExtractionSettings settings = RazorSearchSnapshotExtractionSettingsStore.Current;
+        RazorSearchSnapshotExtractionSettings settings = (extractionOptions ?? new RazorSearchSnapshotExtractionOptions()).CreateSettings();
         RazorSearchHtmlDocument document = CreateDocument(html, settings);
         string resolvedFinalUrl = string.IsNullOrWhiteSpace(finalUrl) ? sourceUrl : finalUrl;
         string titleText = ExtractTitleText(document, settings, context);
@@ -71,9 +73,6 @@ internal static partial class RazorSearchSnapshotTextSanitizer
         return Convert.ToHexString(bytes);
     }
 
-    [GeneratedRegex("<(script|style|noscript)[^>]*>.*?</\\1>", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
-    private static partial Regex ScriptStyleRegex();
-
     [GeneratedRegex("\\s+", RegexOptions.Singleline)]
     private static partial Regex WhitespaceRegex();
 
@@ -82,19 +81,22 @@ internal static partial class RazorSearchSnapshotTextSanitizer
 
     private static RazorSearchHtmlDocument CreateDocument(string html, RazorSearchSnapshotExtractionSettings settings)
     {
-        string sanitized = ScriptStyleRegex().Replace(html, " ");
-        RazorSearchHtmlDocument document = RazorSearchHtmlDocument.Parse(sanitized);
+        RazorSearchHtmlDocument document = RazorSearchHtmlDocument.Parse(html);
+        foreach (IElement element in document.Root.QuerySelectorAll("script, style, noscript, template").ToArray())
+        {
+            element.Remove();
+        }
 
         foreach (string removeSelector in settings.RemoveSelectors)
         {
             if (RazorSearchHtmlSelector.TryParse(removeSelector, out RazorSearchHtmlSelector? selector) is false || selector is null)
             {
-                continue;
+                throw new InvalidOperationException($"Invalid RazorSearch removal selector '{removeSelector}'.");
             }
 
-            foreach (RazorSearchHtmlElement element in document.Root.Descendants().Where(selector.Matches))
+            foreach (IElement element in document.Root.QuerySelectorAll(selector.Value).ToArray())
             {
-                element.MarkRemoved();
+                element.Remove();
             }
         }
 
@@ -146,12 +148,10 @@ internal static partial class RazorSearchSnapshotTextSanitizer
         RazorSearchHtmlDocument document,
         IEnumerable<RazorSearchSnapshotTextSource> configuredSources,
         RazorSearchSnapshotExtractionContext? context)
-        => configuredSources
+        => string.Join(Environment.NewLine, configuredSources
             .Select(configuredSource => ExtractFromSource(document, configuredSource, context))
             .Where(x => string.IsNullOrWhiteSpace(x) is false)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray()
-            .ToJoinedText(Environment.NewLine);
+            .Distinct(StringComparer.OrdinalIgnoreCase));
 
     private static string ExtractFromSource(
         RazorSearchHtmlDocument document,
@@ -168,9 +168,7 @@ internal static partial class RazorSearchSnapshotTextSanitizer
             return string.Empty;
         }
 
-        RazorSearchHtmlElement[] matches = document.Root.Descendants()
-            .Where(x => x.IsRemoved is false)
-            .Where(source.Selector.Matches)
+        IElement[] matches = document.Root.QuerySelectorAll(source.Selector.Value)
             .ToArray();
 
         if (matches.Length == 0)
@@ -180,12 +178,10 @@ internal static partial class RazorSearchSnapshotTextSanitizer
 
         return string.IsNullOrWhiteSpace(source.AttributeName)
             ? document.ExtractText(matches)
-            : matches
-                .Select(x => x.Attributes.TryGetValue(source.AttributeName, out string? attributeValue) ? NormalizeWhitespace(attributeValue) : string.Empty)
+            : string.Join(Environment.NewLine, matches
+                .Select(x => x.GetAttribute(source.AttributeName) is { } attributeValue ? string.Join(" ", attributeValue.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)) : string.Empty)
                 .Where(x => string.IsNullOrWhiteSpace(x) is false)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray()
-                .ToJoinedText(Environment.NewLine);
+                .Distinct(StringComparer.OrdinalIgnoreCase));
     }
 
     private static string ExtractPropertyValue(RazorSearchSnapshotExtractionContext? context, string? propertyAlias)
@@ -198,7 +194,7 @@ internal static partial class RazorSearchSnapshotTextSanitizer
         IPublishedProperty? property = context.Content.GetProperty(propertyAlias);
         return property is null
             ? string.Empty
-            : NormalizePropertyValue(property.GetValue(context.Culture, context.Segment));
+            : NormalizePropertyValue(property.GetValue(context.Culture));
     }
 
     private static string NormalizePropertyValue(object? value)
@@ -210,19 +206,15 @@ internal static partial class RazorSearchSnapshotTextSanitizer
             case string stringValue:
                 return NormalizeTextValue(stringValue);
             case IEnumerable<string> stringValues:
-                return stringValues
+                return string.Join(Environment.NewLine, stringValues
                     .Select(NormalizeTextValue)
                     .Where(x => string.IsNullOrWhiteSpace(x) is false)
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToArray()
-                    .ToJoinedText(Environment.NewLine);
+                    .Distinct(StringComparer.OrdinalIgnoreCase));
             case System.Collections.IEnumerable values:
-                return values.Cast<object?>()
+                return string.Join(Environment.NewLine, values.Cast<object?>()
                     .Select(NormalizePropertyValue)
                     .Where(x => string.IsNullOrWhiteSpace(x) is false)
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToArray()
-                    .ToJoinedText(Environment.NewLine);
+                    .Distinct(StringComparer.OrdinalIgnoreCase));
             default:
                 return NormalizeTextValue(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty);
         }
@@ -239,5 +231,4 @@ internal static partial class RazorSearchSnapshotTextSanitizer
 
 internal sealed record RazorSearchSnapshotExtractionContext(
     IPublishedContent? Content,
-    string? Culture,
-    string? Segment);
+    string? Culture);

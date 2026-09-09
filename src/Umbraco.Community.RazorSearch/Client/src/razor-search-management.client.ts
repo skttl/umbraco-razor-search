@@ -38,10 +38,22 @@ export interface RazorSearchDocumentStatusResponse {
   message?: string;
   jobs: RazorSearchQueueJobResponse[];
   snapshots: RazorSearchDocumentSnapshotResponse[];
-  indexedEntries: RazorSearchDocumentIndexEntryResponse[];
+  expectedIndexEntries: RazorSearchDocumentIndexEntryResponse[];
+}
+
+export interface RazorSearchRebuildOperationStatus {
+  id: string;
+  rootContentKey?: string;
+  state: string;
+  discoveredDocumentCount: number;
+  queuedRouteCount: number;
+  skippedDocumentCount: number;
+  errorMessage?: string;
+  updatedAtUtc: string;
 }
 
 export interface RazorSearchQueueStatusResponse {
+  rebuildOperations: RazorSearchRebuildOperationStatus[];
   state: string;
   totalJobCount: number;
   pendingJobCount: number;
@@ -56,6 +68,7 @@ export interface RazorSearchQueueStatusResponse {
 }
 
 export interface RazorSearchQueueBatchDetailsResponse {
+  rebuildOperations: RazorSearchRebuildOperationStatus[];
   state: string;
   totalJobCount: number;
   pendingJobCount: number;
@@ -76,7 +89,6 @@ export interface RazorSearchQueueJobResponse {
   route: string;
   renderer: string;
   culture?: string;
-  segment?: string;
   enqueuedAt: string;
   updatedAt: string;
   startedAt?: string;
@@ -89,7 +101,6 @@ export interface RazorSearchDocumentSnapshotResponse {
   finalUrl?: string;
   renderer: string;
   culture?: string;
-  segment?: string;
   state: string;
   snapshot: string;
   snapshotHtml?: string;
@@ -98,15 +109,14 @@ export interface RazorSearchDocumentSnapshotResponse {
   headingText?: string;
   bodyText?: string;
   errorMessage?: string;
+  lastAttemptAt?: string;
   renderedAt?: string;
   updatedAt: string;
 }
 
 export interface RazorSearchDocumentIndexEntryResponse {
   culture?: string;
-  segment?: string;
   titles: string[];
-  summaries: string[];
   headings: string[];
   content: string[];
 }
@@ -116,13 +126,11 @@ export interface QueueRazorSearchDocumentResponse {
   scope: string;
   includeDescendants: boolean;
   state: string;
-  maxDocumentCount: number;
   discoveredDocumentCount: number;
   processedDocumentCount: number;
   queuedRouteCount: number;
   duplicateRouteCount: number;
   skippedDocumentCount: number;
-  wasTruncated: boolean;
   queuedAt: string;
   message: string;
   status: RazorSearchDocumentStatusResponse;
@@ -135,13 +143,11 @@ interface QueueRazorSearchDocumentRequest {
 export interface QueueRazorSearchPublishedContentResponse {
   scope: string;
   state: string;
-  maxDocumentCount: number;
   discoveredDocumentCount: number;
   processedDocumentCount: number;
   queuedRouteCount: number;
   duplicateRouteCount: number;
   skippedDocumentCount: number;
-  wasTruncated: boolean;
   queuedAt: string;
   message: string;
 }
@@ -255,8 +261,8 @@ function normalizeDocumentStatusResponse(
     message: readString(response, "message", "Message"),
     jobs: normalizeQueueJobs(response.jobs ?? response.Jobs),
     snapshots: normalizeDocumentSnapshots(response.snapshots ?? response.Snapshots),
-    indexedEntries: normalizeDocumentIndexEntries(
-      response.indexedEntries ?? response.IndexedEntries,
+    expectedIndexEntries: normalizeDocumentIndexEntries(
+      response.expectedIndexEntries ?? response.ExpectedIndexEntries,
     ),
   };
 }
@@ -295,7 +301,6 @@ function normalizeQueueDocumentResponse(
     includeDescendants:
       readBoolean(response, "includeDescendants", "IncludeDescendants") ?? false,
     state,
-    maxDocumentCount: readNumber(response, "maxDocumentCount", "MaxDocumentCount") ?? 0,
     discoveredDocumentCount:
       readNumber(response, "discoveredDocumentCount", "DiscoveredDocumentCount") ?? 0,
     processedDocumentCount:
@@ -305,7 +310,6 @@ function normalizeQueueDocumentResponse(
       readNumber(response, "duplicateRouteCount", "DuplicateRouteCount") ?? 0,
     skippedDocumentCount:
       readNumber(response, "skippedDocumentCount", "SkippedDocumentCount") ?? 0,
-    wasTruncated: readBoolean(response, "wasTruncated", "WasTruncated") ?? false,
     queuedAt,
     message,
     status,
@@ -327,6 +331,7 @@ function normalizeQueueStatusResponse(
   }
 
   return {
+    rebuildOperations: normalizeRebuildOperations(response.rebuildOperations ?? response.RebuildOperations),
     state,
     totalJobCount: readNumber(response, "totalJobCount", "TotalJobCount") ?? 0,
     pendingJobCount: readNumber(response, "pendingJobCount", "PendingJobCount") ?? 0,
@@ -359,6 +364,7 @@ function normalizeQueueBatchDetailsResponse(
   }
 
   return {
+    rebuildOperations: normalizeRebuildOperations(response.rebuildOperations ?? response.RebuildOperations),
     state,
     totalJobCount: readNumber(response, "totalJobCount", "TotalJobCount") ?? 0,
     pendingJobCount: readNumber(response, "pendingJobCount", "PendingJobCount") ?? 0,
@@ -401,7 +407,6 @@ function normalizeQueueJobResponse(
     route,
     renderer,
     culture: readString(response, "culture", "Culture"),
-    segment: readString(response, "segment", "Segment"),
     enqueuedAt,
     updatedAt,
     startedAt: readString(response, "startedAt", "StartedAt"),
@@ -444,7 +449,6 @@ function normalizeDocumentSnapshotResponse(
     finalUrl: readString(response, "finalUrl", "FinalUrl"),
     renderer,
     culture: readString(response, "culture", "Culture"),
-    segment: readString(response, "segment", "Segment"),
     state,
     snapshot,
     snapshotHtml: readString(response, "snapshotHtml", "SnapshotHtml"),
@@ -453,6 +457,7 @@ function normalizeDocumentSnapshotResponse(
     headingText: readString(response, "headingText", "HeadingText"),
     bodyText: readString(response, "bodyText", "BodyText"),
     errorMessage: readString(response, "errorMessage", "ErrorMessage"),
+    lastAttemptAt: readString(response, "lastAttemptAt", "LastAttemptAt"),
     renderedAt: readString(response, "renderedAt", "RenderedAt"),
     updatedAt,
   };
@@ -479,9 +484,7 @@ function normalizeDocumentIndexEntryResponse(
 
   return {
     culture: readString(response, "culture", "Culture"),
-    segment: readString(response, "segment", "Segment"),
     titles: readStringArray(response, "titles", "Titles"),
-    summaries: readStringArray(response, "summaries", "Summaries"),
     headings: readStringArray(response, "headings", "Headings"),
     content: readStringArray(response, "content", "Content"),
   };
@@ -506,7 +509,6 @@ function normalizeQueuePublishedContentResponse(
   return {
     scope,
     state,
-    maxDocumentCount: readNumber(response, "maxDocumentCount", "MaxDocumentCount") ?? 0,
     discoveredDocumentCount:
       readNumber(response, "discoveredDocumentCount", "DiscoveredDocumentCount") ?? 0,
     processedDocumentCount:
@@ -516,7 +518,6 @@ function normalizeQueuePublishedContentResponse(
       readNumber(response, "duplicateRouteCount", "DuplicateRouteCount") ?? 0,
     skippedDocumentCount:
       readNumber(response, "skippedDocumentCount", "SkippedDocumentCount") ?? 0,
-    wasTruncated: readBoolean(response, "wasTruncated", "WasTruncated") ?? false,
     queuedAt,
     message,
   };
@@ -812,4 +813,18 @@ export class RazorSearchManagementClient extends UmbControllerBase {
       // Ignore malformed stream frames and wait for the next valid event.
     }
   }
+}
+
+function normalizeRebuildOperations(value: unknown): RazorSearchRebuildOperationStatus[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isObject).map((operation) => ({
+    id: readString(operation, "id", "Id") ?? "",
+    rootContentKey: readString(operation, "rootContentKey", "RootContentKey"),
+    state: readString(operation, "state", "State") ?? "unknown",
+    discoveredDocumentCount: readNumber(operation, "discoveredDocumentCount", "DiscoveredDocumentCount") ?? 0,
+    queuedRouteCount: readNumber(operation, "queuedRouteCount", "QueuedRouteCount") ?? 0,
+    skippedDocumentCount: readNumber(operation, "skippedDocumentCount", "SkippedDocumentCount") ?? 0,
+    errorMessage: readString(operation, "errorMessage", "ErrorMessage"),
+    updatedAtUtc: readString(operation, "updatedAtUtc", "UpdatedAtUtc") ?? "",
+  }));
 }

@@ -2,6 +2,8 @@ namespace Umbraco.Community.RazorSearch.Api.Models;
 
 public sealed class RazorSearchQueueBatchDetailsResponse
 {
+    public IReadOnlyCollection<Umbraco.Community.RazorSearch.Models.RazorSearchRebuildOperationStatus> RebuildOperations { get; init; } = [];
+
     public string State { get; init; } = "idle";
 
     public int TotalJobCount { get; init; }

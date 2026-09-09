@@ -17,20 +17,20 @@ internal sealed class RazorSearchContentFilter(IOptionsMonitor<RazorSearchOption
         return GetExcludedContentTypeAliases().Contains(contentTypeAlias);
     }
 
-    public bool IsExcluded(IPublishedContent content, string? culture = null, string? segment = null)
+    public bool IsExcluded(IPublishedContent content, string? culture = null)
     {
         ArgumentNullException.ThrowIfNull(content);
 
         return IsExcludedContentType(content.ContentType.Alias)
-               || IsExcludedByProperty(content, culture, segment);
+               || IsExcludedByProperty(content, culture);
     }
 
-    public bool IsExcluded(IContentBase content, string? culture = null, string? segment = null, bool published = true)
+    public bool IsExcluded(IContentBase content, string? culture = null, bool published = true)
     {
         ArgumentNullException.ThrowIfNull(content);
 
         return IsExcludedContentType(content.ContentType.Alias)
-               || IsExcludedByProperty(content, culture, segment, published);
+               || IsExcludedByProperty(content, culture, published);
     }
 
     private HashSet<string> GetExcludedContentTypeAliases() => optionsMonitor.CurrentValue.ExcludedContentTypeAliases
@@ -44,7 +44,7 @@ internal sealed class RazorSearchContentFilter(IOptionsMonitor<RazorSearchOption
         return string.IsNullOrWhiteSpace(alias) ? null : alias.Trim();
     }
 
-    private bool IsExcludedByProperty(IPublishedContent content, string? culture, string? segment)
+    private bool IsExcludedByProperty(IPublishedContent content, string? culture)
     {
         string? propertyAlias = GetExcludeFromSearchPropertyAlias();
         if (propertyAlias is null)
@@ -58,10 +58,10 @@ internal sealed class RazorSearchContentFilter(IOptionsMonitor<RazorSearchOption
             return false;
         }
 
-        return IsExcludedValue(property.GetValue(culture, segment));
+        return IsExcludedValue(property.GetValue(culture, null));
     }
 
-    private bool IsExcludedByProperty(IContentBase content, string? culture, string? segment, bool published)
+    private bool IsExcludedByProperty(IContentBase content, string? culture, bool published)
     {
         string? propertyAlias = GetExcludeFromSearchPropertyAlias();
         if (propertyAlias is null || content.HasProperty(propertyAlias) is false)
@@ -69,7 +69,7 @@ internal sealed class RazorSearchContentFilter(IOptionsMonitor<RazorSearchOption
             return false;
         }
 
-        return IsExcludedValue(content.GetValue(propertyAlias, culture, segment, published));
+        return IsExcludedValue(content.GetValue(propertyAlias, culture, null, published));
     }
 
     private static bool IsExcludedValue(object? value) => value switch

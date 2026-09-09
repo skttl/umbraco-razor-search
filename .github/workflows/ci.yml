@@ -1,0 +1,36 @@
+name: Validate packages
+
+on:
+  pull_request:
+  push:
+    branches: [main, v17/main, v18/main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: src/Umbraco.Community.RazorSearch/Client/package-lock.json
+      - name: Build and test packages
+        shell: pwsh
+        env:
+          RAZORSEARCH_TEST_SQLSERVER: 'Server=(localdb)\RazorSearchCI;Database=RazorSearchTests;Integrated Security=True;TrustServerCertificate=True'
+        run: |
+          sqllocaldb create RazorSearchCI -s
+          if ($LASTEXITCODE -ne 0) { throw 'Could not start the isolated SQL Server instance.' }
+          ./build/Validate.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: artifacts/packages/*.nupkg
+

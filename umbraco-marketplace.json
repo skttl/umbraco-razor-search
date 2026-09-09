@@ -7,8 +7,8 @@
     "Contributors": [],
     "SyncContributorsFromRepository": true
   },
-  "Category": "Developer Tools",
-  "Description": "Search rendered Umbraco pages with Umbraco.Cms.Search.",
+  "Category": "Search",
+  "Description": "Search rendered page content with Umbraco Search. Configurable CSS and published-property extraction, language variants, background rebuilds and an optional Examine companion.",
   "IssueTrackerUrl": "https://github.com/skttl/umbraco-razor-search/issues",
   "LicenseTypes": [
     "Free"
@@ -21,5 +21,27 @@
     "full-text-search"
   ],
   "Title": "RazorSearch",
-  "Screenshots": []
+  "Screenshots": [
+    {
+      "ImageUrl": "https://raw.githubusercontent.com/skttl/umbraco-razor-search/main/assets/marketplace/razorsearch-queue-running.png",
+      "Caption": "Monitor live RazorSearch rendering and backfill progress"
+    },
+    {
+      "ImageUrl": "https://raw.githubusercontent.com/skttl/umbraco-razor-search/main/assets/marketplace/razorsearch-snapshot-details.png",
+      "Caption": "Inspect the stored snapshot and extracted content for a document"
+    },
+    {
+      "ImageUrl": "https://raw.githubusercontent.com/skttl/umbraco-razor-search/main/assets/marketplace/razorsearch-jobs-succeeded.png",
+      "Caption": "Review completed RazorSearch rendering jobs by culture and URL"
+    },
+    {
+      "ImageUrl": "https://raw.githubusercontent.com/skttl/umbraco-razor-search/main/assets/marketplace/razorsearch-queue-dialog.png",
+      "Caption": "Queue a document or its descendants for rendering"
+    },
+    {
+      "ImageUrl": "https://raw.githubusercontent.com/skttl/umbraco-razor-search/main/assets/marketplace/razorsearch-search-results.png",
+      "Caption": "Search rendered page content with highlighted matches"
+    }
+  ],
+  "DocumentationUrl": "https://github.com/skttl/umbraco-razor-search/blob/main/docs/README.md"
 }

@@ -10,7 +10,6 @@ import type {
   UmbModalExtensionElement,
 } from "@umbraco-cms/backoffice/modal";
 import type {
-  RazorSearchDocumentIndexEntryResponse,
   RazorSearchDocumentSnapshotResponse,
   RazorSearchDocumentStatusResponse,
   RazorSearchQueueJobResponse,
@@ -20,19 +19,7 @@ import type {
   RazorSearchStatusModalValue,
 } from "./razor-search-status-modal.token.js";
 
-type StatusTab = "snapshot" | "indexed" | "diff" | "info";
-
-type VariantComparison = {
-  key: string;
-  label: string;
-  snapshot?: RazorSearchDocumentSnapshotResponse;
-  indexedEntry?: RazorSearchDocumentIndexEntryResponse;
-};
-
-type DiffRow = {
-  kind: "equal" | "removed" | "added";
-  value: string;
-};
+type StatusTab = "snapshot" | "jobs";
 
 @customElement("razor-search-status-modal")
 export class RazorSearchStatusModalElement
@@ -51,29 +38,60 @@ export class RazorSearchStatusModalElement
   static override properties = {
     modalContext: { attribute: false },
     _activeTab: { state: true },
-    _showAllJobs: { state: true },
   };
 
   static override styles = [
     css`
       :host {
         display: block;
+        box-sizing: border-box;
         height: 100%;
+        max-width: 100%;
         min-width: 0;
-        overflow-x: hidden;
+        width: 100%;
+        overflow-x: clip;
       }
 
       umb-body-layout {
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 100%;
         min-width: 0;
+        overflow-x: clip;
         --umb-body-layout-main-content-padding: var(--uui-size-space-5);
       }
 
       uui-box {
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+        overflow-x: hidden;
+      }
+
+      .layout,
+      .layout > *,
+      .content-stack,
+      .variant-card {
+        box-sizing: border-box;
+        max-width: 100%;
         min-width: 0;
       }
 
       .layout > * {
         min-width: 0;
+      }
+
+      .layout {
+        width: 100%;
+        overflow-x: clip;
+        padding: 0;
+      }
+
+      .tab-panel,
+      .content-stack,
+      .variant-card {
+        overflow-x: hidden;
       }
 
       .layout,
@@ -85,8 +103,6 @@ export class RazorSearchStatusModalElement
       .tab-layout,
       .content-stack,
       .meta-grid,
-      .diff-stack,
-      .diff-section,
       .empty-state {
         display: grid;
         gap: var(--uui-size-space-4);
@@ -97,13 +113,13 @@ export class RazorSearchStatusModalElement
         padding-bottom: var(--uui-size-space-4);
       }
 
-      .summary-header,
-      .summary-title,
-      .summary-updated,
+      .layout > .tab-layout {
+        margin-top: 0;
+      }
+
       .job-header,
       .variant-header,
       .tab-header,
-      .diff-header,
       .actions {
         display: flex;
         gap: var(--uui-size-space-3);
@@ -112,27 +128,15 @@ export class RazorSearchStatusModalElement
         min-width: 0;
       }
 
-      .summary-header,
       .job-header,
       .variant-header,
-      .diff-header {
-        justify-content: space-between;
-      }
-
-      .summary-title,
-      .summary-updated {
+      .tab-header {
         min-width: 0;
       }
 
-      .summary-title h3,
       .section-title,
       .tab-title,
       .meta-title,
-      .diff-title {
-        margin: 0;
-      }
-
-      .summary-title h3,
       .job-header strong,
       .variant-header strong {
         min-width: 0;
@@ -143,35 +147,11 @@ export class RazorSearchStatusModalElement
         font-size: 1rem;
       }
 
-      .summary-updated,
       .meta,
       .muted,
       .field-hint,
       .empty-copy {
         color: var(--uui-color-text-alt);
-      }
-
-      .metric-grid {
-        grid-template-columns: minmax(0, 1fr);
-      }
-
-      .metric-card {
-        gap: var(--uui-size-space-2);
-        padding: var(--uui-size-space-4);
-        border: 1px solid var(--uui-color-divider);
-        border-radius: var(--uui-border-radius);
-        background: var(--uui-color-surface);
-      }
-
-      .metric-label {
-        color: var(--uui-color-text-alt);
-        font-size: 0.85rem;
-      }
-
-      .metric-value {
-        font-size: 1.6rem;
-        font-weight: 700;
-        line-height: 1;
       }
 
       .job-card,
@@ -181,11 +161,42 @@ export class RazorSearchStatusModalElement
         background: var(--uui-color-surface);
         padding: var(--uui-size-space-4);
         min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+      }
+
+      .job-header {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .job-header strong {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+
+      .job-header uui-badge {
+        --uui-badge-position: static;
+        flex: 0 1 auto;
+        min-width: 0;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        white-space: normal;
+      }
+
+      .variant-header uui-badge {
+        --uui-badge-position: static;
       }
 
       .variant-card {
         display: grid;
         gap: var(--uui-size-space-4);
+      }
+
+      .snapshot-box {
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
       }
 
       .variant-meta {
@@ -195,11 +206,22 @@ export class RazorSearchStatusModalElement
       }
 
       .tab-layout {
-        overflow-x: hidden;
+        min-width: 0;
+        overflow-x: clip;
       }
 
       .tab-strip {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        box-sizing: border-box;
+        min-width: 0;
+        width: 100%;
+        margin-left: 0;
+        padding-inline: var(--uui-size-layout-1);
         padding-bottom: var(--uui-size-space-2);
+        background: var(--uui-color-surface);
+        border-bottom: 1px solid var(--uui-color-divider);
         overflow-x: hidden;
         overflow-y: hidden;
       }
@@ -218,44 +240,49 @@ export class RazorSearchStatusModalElement
 
       .tab-panel {
         min-width: 0;
-        overflow-x: hidden;
+        padding-inline: var(--uui-size-layout-1);
+        padding-top: var(--uui-size-space-5);
+        overflow-x: clip;
       }
 
-      .content-grid,
-      .meta-grid {
+      .property-list {
         display: grid;
-        grid-template-columns: minmax(0, 1fr);
-        gap: var(--uui-size-space-3);
+        gap: 0;
         min-width: 0;
+        overflow-x: clip;
       }
 
-      .content-card,
-      .meta-card {
-        border: 1px solid var(--uui-color-divider);
-        border-radius: var(--uui-border-radius);
-        background: var(--uui-color-surface);
-        padding: var(--uui-size-space-4);
-        min-width: 0;
-      }
-
-      .meta-card {
+      .property-row {
         display: grid;
-        gap: var(--uui-size-space-2);
+        grid-template-columns: minmax(11rem, 0.32fr) minmax(0, 1fr);
+        column-gap: var(--uui-size-space-4);
+        align-items: start;
+        min-width: 0;
+        padding: var(--uui-size-space-2) 0;
       }
 
-      .meta-label {
-        margin: 0;
-        color: var(--uui-color-text-alt);
-        font-size: 0.76rem;
+      .property-label {
+        min-width: 0;
+        color: var(--uui-color-text);
         font-weight: 700;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
+        overflow-wrap: anywhere;
       }
 
-      .meta-value {
+      .property-editor {
+        box-sizing: border-box;
+        width: 100%;
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .property-value {
+        display: block;
         margin: 0;
         min-width: 0;
         overflow-wrap: anywhere;
+        word-break: break-word;
+        line-height: 1.35;
+        white-space: pre-wrap;
       }
 
       .notice {
@@ -269,71 +296,27 @@ export class RazorSearchStatusModalElement
         );
       }
 
-      .diff-block {
-        border: 1px solid var(--uui-color-divider);
-        border-radius: var(--uui-border-radius);
-        overflow: hidden;
-        background: var(--uui-color-surface);
-        min-width: 0;
-      }
 
-      .diff-row {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr);
-        gap: var(--uui-size-space-3);
-        padding: var(--uui-size-space-2) var(--uui-size-space-3);
-        border-top: 1px solid var(--uui-color-divider);
-        min-width: 0;
-      }
 
-      .diff-row:first-child {
-        border-top: 0;
-      }
 
-      .diff-row--added {
-        background: color-mix(
-          in srgb,
-          var(--uui-color-positive-standalone) 8%,
-          var(--uui-color-surface)
-        );
-      }
 
-      .diff-row--removed {
-        background: color-mix(
-          in srgb,
-          var(--uui-color-danger-standalone) 8%,
-          var(--uui-color-surface)
-        );
-      }
 
-      .diff-marker {
-        width: 1rem;
-        text-align: center;
-        font-weight: 700;
-        color: var(--uui-color-text-alt);
-      }
 
-      pre,
-      .diff-row code {
-        margin: 0;
+      pre {
+        max-height: 16rem;
         max-width: 100%;
+        margin: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
         overflow-wrap: anywhere;
         white-space: pre-wrap;
         word-break: break-word;
-        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-        font-size: 0.84rem;
-        line-height: 1.5;
+        color: var(--uui-color-text-alt);
+        border: 1px solid var(--uui-color-divider);
+        border-radius: var(--uui-border-radius);
+        padding: var(--uui-size-space-2);
       }
 
-      pre {
-        max-height: 20rem;
-        overflow: auto;
-      }
-
-      .diff-row code {
-        display: block;
-        background: transparent;
-      }
 
       p {
         margin: 0;
@@ -350,7 +333,19 @@ export class RazorSearchStatusModalElement
       }
 
       .actions {
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 100%;
         justify-content: flex-end;
+        position: sticky;
+        bottom: 0;
+        z-index: 1;
+        padding: var(--uui-size-space-3) 0;
+        background: var(--uui-color-surface);
+      }
+
+      .actions uui-button:first-child {
+        margin-right: auto;
       }
 
       .secondary-action {
@@ -358,29 +353,26 @@ export class RazorSearchStatusModalElement
       }
 
       @media (min-width: 720px) {
-        .metric-grid {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
+      }
 
-        .content-grid,
-        .meta-grid {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
+      @media (max-width: 560px) {
+        .property-row {
+          grid-template-columns: minmax(0, 1fr);
+          row-gap: var(--uui-size-space-1);
         }
       }
     `,
   ];
 
   declare _activeTab: StatusTab;
-  declare _showAllJobs: boolean;
 
   constructor() {
     super();
     this._activeTab = "snapshot";
-    this._showAllJobs = false;
   }
 
-  #submit() {
-    this.modalContext?.updateValue({ action: "close" });
+  #submit(action: RazorSearchStatusModalValue["action"]) {
+    this.modalContext?.updateValue({ action });
     this.modalContext?.submit();
   }
 
@@ -399,16 +391,10 @@ export class RazorSearchStatusModalElement
     const tab = tabElement?.getAttribute("data-tab");
     if (
       tab === "snapshot" ||
-      tab === "indexed" ||
-      tab === "diff" ||
-      tab === "info"
+      tab === "jobs"
     ) {
       this.#setActiveTab(tab);
     }
-  }
-
-  #toggleJobs() {
-    this._showAllJobs = !this._showAllJobs;
   }
 
   override render() {
@@ -418,7 +404,7 @@ export class RazorSearchStatusModalElement
 
     if (!status) {
       return html`
-        <umb-body-layout .headline=${headline}>
+        <umb-body-layout main-no-padding .headline=${headline}>
           <div class="layout">
             ${this.#renderEmptyState(
               "No status payload was supplied for this dialog.",
@@ -428,78 +414,33 @@ export class RazorSearchStatusModalElement
             <uui-button
               look="primary"
               label="Close"
-              @click=${() => this.#submit()}></uui-button>
+              @click=${() => this.#submit("close")}></uui-button>
           </div>
         </umb-body-layout>
       `;
     }
 
     return html`
-      <umb-body-layout .headline=${headline}>
+      <umb-body-layout main-no-padding .headline=${headline}>
         <div class="layout">
-          ${this.#renderSummary(status)}
-          ${this.#renderJobs(status.jobs)}
           ${this.#renderTabs(status)}
         </div>
 
         <div slot="actions" class="actions">
           <uui-button
+            look="secondary"
+            label="Queue"
+            @click=${() => this.#submit("queue")}>Queue</uui-button>
+          <uui-button
             look="primary"
             label="Close"
-            @click=${() => this.#submit()}></uui-button>
+            @click=${() => this.#submit("close")}>Close</uui-button>
         </div>
       </umb-body-layout>
     `;
   }
 
-  #renderSummary(status: RazorSearchDocumentStatusResponse) {
-    return html`
-      <uui-box>
-        <div slot="headline" class="summary-header">
-          <div class="summary-title">
-            <h3>${status.documentName?.trim() || status.documentId}</h3>
-            <uui-badge color=${this.#badgeColor(status.state)}>
-              ${status.state}
-            </uui-badge>
-          </div>
-          <div class="summary-updated">
-            Updated: ${this.#formatDate(status.updatedAt) ?? "Unknown"}
-          </div>
-        </div>
-
-        <div class="stack">
-          ${status.message ? html`<p>${status.message}</p>` : nothing}
-
-          <div class="metric-grid">
-            ${this.#renderMetric("Pending", String(status.pendingDocumentCount))}
-            ${this.#renderMetric(
-              "Completed snapshots",
-              String(status.completedDocumentCount),
-            )}
-            ${this.#renderMetric("Failed", String(status.failedDocumentCount))}
-            ${this.#renderMetric(
-              "Includes descendants",
-              status.includeDescendants ? "Yes" : "No",
-            )}
-          </div>
-        </div>
-      </uui-box>
-    `;
-  }
-
-  #renderMetric(label: string, value: string) {
-    return html`
-      <div class="metric-card">
-        <div class="metric-label">${label}</div>
-        <div class="metric-value">${value}</div>
-      </div>
-    `;
-  }
-
   #renderJobs(jobs: RazorSearchQueueJobResponse[]) {
-    const visibleJobs = this._showAllJobs ? jobs : jobs.slice(0, 1);
-    const hiddenJobCount = Math.max(jobs.length - 1, 0);
-
     return html`
       <uui-box>
         <h4 slot="headline" class="section-title">Queued Jobs</h4>
@@ -510,7 +451,7 @@ export class RazorSearchStatusModalElement
             )
           : html`
               <div class="job-list">
-                ${visibleJobs.map(
+                ${jobs.map(
                   (job) => html`
                     <article class="job-card">
                       <div class="job-list">
@@ -524,7 +465,7 @@ export class RazorSearchStatusModalElement
                         <p class="meta">
                           Renderer: ${job.renderer}${job.culture
                             ? ` • Culture: ${job.culture}`
-                            : ""}${job.segment ? ` • Segment: ${job.segment}` : ""}
+                            : ""}
                         </p>
 
                         <p class="meta">
@@ -544,19 +485,6 @@ export class RazorSearchStatusModalElement
                   `,
                 )}
 
-                ${jobs.length > 1
-                  ? html`
-                      <uui-button
-                        class="secondary-action"
-                        look="secondary"
-                        color="default"
-                        @click=${() => this.#toggleJobs()}>
-                        ${this._showAllJobs
-                          ? "Show fewer jobs"
-                          : `Show ${hiddenJobCount} more job${hiddenJobCount === 1 ? "" : "s"}`}
-                      </uui-button>
-                    `
-                  : nothing}
               </div>
             `}
       </uui-box>
@@ -565,27 +493,19 @@ export class RazorSearchStatusModalElement
 
   #renderTabs(status: RazorSearchDocumentStatusResponse) {
     return html`
-      <uui-box>
-        <div slot="headline" class="tab-header">
-          <h4 class="section-title">Snapshot Details</h4>
+      <div class="tab-layout">
+        <div class="tab-strip">
+          <uui-tab-group
+            role="tablist"
+            aria-label="RazorSearch status tabs"
+            @click=${this.#onTabChange}>
+            ${this.#renderTab("snapshot", "Snapshot")}
+            ${this.#renderTab("jobs", "Jobs Queue")}
+          </uui-tab-group>
         </div>
 
-        <div class="tab-layout">
-          <div class="tab-strip">
-            <uui-tab-group
-              role="tablist"
-              aria-label="RazorSearch status tabs"
-              @click=${this.#onTabChange}>
-              ${this.#renderTab("snapshot", "Snapshot")}
-              ${this.#renderTab("indexed", "Indexed")}
-              ${this.#renderTab("diff", "Diff")}
-              ${this.#renderTab("info", "Info")}
-            </uui-tab-group>
-          </div>
-
-          <div class="tab-panel">${this.#renderActiveTab(status)}</div>
-        </div>
-      </uui-box>
+        <div class="tab-panel">${this.#renderActiveTab(status)}</div>
+      </div>
     `;
   }
 
@@ -604,12 +524,8 @@ export class RazorSearchStatusModalElement
     switch (this._activeTab) {
       case "snapshot":
         return this.#renderSnapshotTab(status.snapshots);
-      case "indexed":
-        return this.#renderIndexedTab(status.indexedEntries);
-      case "diff":
-        return this.#renderDiffTab(status.snapshots, status.indexedEntries);
-      case "info":
-        return this.#renderInfoTab(status.snapshots);
+      case "jobs":
+        return this.#renderJobs(status.jobs);
       default:
         return nothing;
     }
@@ -624,239 +540,80 @@ export class RazorSearchStatusModalElement
 
     return html`
       <div class="content-stack">
+        <p class="muted">
+          Stored snapshot data after RazorSearch extraction. This is the source
+          used to build the indexed fields.
+        </p>
         ${snapshots.map(
           (snapshot) => html`
-            <article class="variant-card">
-              <div class="content-grid">
+            <uui-box class="snapshot-box">
+              <div slot="headline" class="variant-header">
+                <strong>${snapshot.culture || "Invariant"}</strong>
+                <uui-badge color=${this.#badgeColor(snapshot.state)}>
+                  ${snapshot.state}
+                </uui-badge>
+              </div>
+
+              <div class="property-list">
                 ${this.#renderTextCard("Title text", snapshot.titleText)}
                 ${this.#renderTextCard("Summary text", snapshot.summaryText)}
                 ${this.#renderTextCard("Heading text", snapshot.headingText)}
                 ${this.#renderTextCard("Body text", snapshot.bodyText)}
               </div>
 
-              <div class="variant-meta">
-                <div class="variant-header">
-                  <strong>${this.#variantLabel(snapshot)}</strong>
-                  <uui-badge color=${this.#badgeColor(snapshot.state)}>
-                    ${snapshot.state}
-                  </uui-badge>
-                </div>
-
-                <p class="meta">
-                  Renderer: ${snapshot.renderer}${snapshot.culture
-                    ? ` • Culture: ${snapshot.culture}`
-                    : ""}${snapshot.segment ? ` • Segment: ${snapshot.segment}` : ""}
-                </p>
-
-                ${snapshot.errorMessage
-                  ? html`<div class="notice"><p>${snapshot.errorMessage}</p></div>`
-                  : nothing}
-              </div>
-            </article>
-          `,
-        )}
-      </div>
-    `;
-  }
-
-  #renderIndexedTab(indexedEntries: RazorSearchDocumentIndexEntryResponse[]) {
-    if (indexedEntries.length === 0) {
-      return this.#renderEmptyState(
-        "No successful snapshot content is currently contributing RazorSearch fields to the index.",
-      );
-    }
-
-    return html`
-      <div class="content-stack">
-        ${indexedEntries.map(
-          (entry) => html`
-            <article class="variant-card">
-              <div class="content-grid">
-                ${this.#renderTextCard(
-                  "Title fields",
-                  this.#joinValues(entry.titles),
-                )}
-                ${this.#renderTextCard(
-                  "Summary fields",
-                  this.#joinValues(entry.summaries),
-                )}
-                ${this.#renderTextCard(
-                  "Heading fields",
-                  this.#joinValues(entry.headings),
-                )}
-                ${this.#renderTextCard(
-                  "Content fields",
-                  this.#joinValues(entry.content),
-                )}
-              </div>
-
-              <div class="variant-meta">
-                <div class="variant-header">
-                  <strong>${this.#variantLabel(entry)}</strong>
-                </div>
-              </div>
-            </article>
-          `,
-        )}
-      </div>
-    `;
-  }
-
-  #renderDiffTab(
-    snapshots: RazorSearchDocumentSnapshotResponse[],
-    indexedEntries: RazorSearchDocumentIndexEntryResponse[],
-  ) {
-    const comparisons = this.#buildComparisons(snapshots, indexedEntries);
-
-    if (comparisons.length === 0) {
-      return this.#renderEmptyState(
-        "No snapshot or index content is available to compare yet.",
-      );
-    }
-
-    return html`
-      <div class="diff-stack">
-        ${comparisons.map(
-          (comparison) => html`
-            <article class="variant-card">
-              ${this.#renderDiffSection(
-                "Title",
-                comparison.snapshot?.titleText,
-                this.#joinValues(comparison.indexedEntry?.titles ?? []),
-              )}
-              ${this.#renderDiffSection(
-                "Summary",
-                comparison.snapshot?.summaryText,
-                this.#joinValues(comparison.indexedEntry?.summaries ?? []),
-              )}
-              ${this.#renderDiffSection(
-                "Heading",
-                comparison.snapshot?.headingText,
-                this.#joinValues(comparison.indexedEntry?.headings ?? []),
-              )}
-              ${this.#renderDiffSection(
-                "Content",
-                comparison.snapshot?.bodyText,
-                this.#joinValues(comparison.indexedEntry?.content ?? []),
-              )}
-
-              <div class="variant-meta">
-                <div class="variant-header">
-                  <strong>${comparison.label}</strong>
-                  ${comparison.snapshot
-                    ? html`
-                        <uui-badge
-                          color=${this.#badgeColor(comparison.snapshot.state)}>
-                          ${comparison.snapshot.state}
-                        </uui-badge>
-                      `
-                    : nothing}
-                </div>
-              </div>
-            </article>
-          `,
-        )}
-      </div>
-    `;
-  }
-
-  #renderInfoTab(snapshots: RazorSearchDocumentSnapshotResponse[]) {
-    if (snapshots.length === 0) {
-      return this.#renderEmptyState(
-        "No stored snapshots were found for this document.",
-      );
-    }
-
-    return html`
-      <div class="content-stack">
-        ${snapshots.map(
-          (snapshot) => html`
-            <article class="variant-card">
-              <div class="meta-grid">
+              <div class="property-list">
                 ${this.#renderMetaCard("URL", snapshot.route)}
                 ${this.#renderMetaCard("Final URL", snapshot.finalUrl)}
                 ${this.#renderMetaCard("Renderer", snapshot.renderer)}
-                ${this.#renderMetaCard(
-                  "Render date",
-                  this.#formatDate(snapshot.renderedAt),
-                )}
-                ${this.#renderMetaCard(
-                  "Update date",
-                  this.#formatDate(snapshot.updatedAt),
-                )}
-                ${this.#renderMetaCard("Culture", snapshot.culture ?? "Invariant")}
-                ${this.#renderMetaCard("Segment", snapshot.segment ?? "None")}
+                ${this.#renderMetaCard("Last render attempt", this.#formatDate(snapshot.lastAttemptAt))}
+                ${this.#renderMetaCard("Last successful render", this.#formatDate(snapshot.renderedAt))}
+                ${this.#renderMetaCard("Update date", this.#formatDate(snapshot.updatedAt))}
               </div>
 
-              ${this.#renderTextCard(
-                "Full snapshot HTML",
-                snapshot.snapshotHtml,
-                "No HTML snapshot is stored yet for this entry.",
-              )}
+              ${snapshot.snapshotHtml !== undefined
+                ? this.#renderMetaRow("Full snapshot HTML", snapshot.snapshotHtml)
+                : nothing}
 
-              <div class="variant-meta">
-                <div class="variant-header">
-                  <strong>${this.#variantLabel(snapshot)}</strong>
-                  <uui-badge color=${this.#badgeColor(snapshot.state)}>
-                    ${snapshot.state}
-                  </uui-badge>
-                </div>
-              </div>
-            </article>
+              ${snapshot.errorMessage
+                ? html`<div class="notice"><p>${snapshot.errorMessage}</p></div>`
+                : nothing}
+            </uui-box>
           `,
         )}
       </div>
-    `;
-  }
-
-  #renderDiffSection(label: string, snapshotValue?: string, indexedValue?: string) {
-    const normalizedSnapshot = snapshotValue?.trim() || "";
-    const normalizedIndexed = indexedValue?.trim() || "";
-    const matches = normalizedSnapshot === normalizedIndexed;
-
-    return html`
-      <section class="diff-section">
-        <div class="diff-header">
-          <h5 class="diff-title">${label}</h5>
-          <span class="field-hint">${matches ? "Matches index" : "Differences found"}</span>
-        </div>
-
-        ${matches
-          ? this.#renderTextCard(
-              `${label} content`,
-              normalizedSnapshot || normalizedIndexed,
-            )
-          : html`
-              <div class="diff-block">
-                ${this.#buildDiffRows(normalizedSnapshot, normalizedIndexed).map(
-                  (row) => html`
-                    <div class="diff-row diff-row--${row.kind}">
-                      <span class="diff-marker">${this.#diffMarker(row.kind)}</span>
-                      <code>${row.value}</code>
-                    </div>
-                  `,
-                )}
-              </div>
-            `}
-      </section>
     `;
   }
 
   #renderTextCard(label: string, value?: string, emptyLabel = "No content.") {
     return html`
-      <section class="content-card">
-        <h5 class="meta-title">${label}</h5>
-        <pre>${value?.trim() ? value : emptyLabel}</pre>
-      </section>
+      <div class="property-row">
+        <div class="property-label">${label}</div>
+        <div class="property-editor">
+          <div class="property-value">${value?.trim() ? value : emptyLabel}</div>
+        </div>
+      </div>
     `;
   }
 
   #renderMetaCard(label: string, value?: string) {
     return html`
-      <section class="meta-card">
-        <p class="meta-label">${label}</p>
-        <p class="meta-value">${value?.trim() ? value : "Not recorded."}</p>
-      </section>
+      <div class="property-row">
+        <div class="property-label">${label}</div>
+        <div class="property-editor">
+          <div class="property-value">${value?.trim() ? value : "Not recorded."}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  #renderMetaRow(label: string, value?: string) {
+    return html`
+      <div class="property-row">
+        <div class="property-label">${label}</div>
+        <div class="property-editor">
+          <pre>${value?.trim() ? value : "Not recorded."}</pre>
+        </div>
+      </div>
     `;
   }
 
@@ -867,190 +624,6 @@ export class RazorSearchStatusModalElement
         <p class="empty-copy">${message}</p>
       </div>
     `;
-  }
-
-  #buildComparisons(
-    snapshots: RazorSearchDocumentSnapshotResponse[],
-    indexedEntries: RazorSearchDocumentIndexEntryResponse[],
-  ): VariantComparison[] {
-    const comparisons = new Map<string, VariantComparison>();
-
-    for (const snapshot of snapshots) {
-      const key = this.#variantKey(snapshot.culture, snapshot.segment);
-      comparisons.set(key, {
-        key,
-        label: this.#variantLabel(snapshot),
-        snapshot,
-        indexedEntry: comparisons.get(key)?.indexedEntry,
-      });
-    }
-
-    for (const entry of indexedEntries) {
-      const key = this.#variantKey(entry.culture, entry.segment);
-      comparisons.set(key, {
-        key,
-        label: comparisons.get(key)?.label ?? this.#variantLabel(entry),
-        snapshot: comparisons.get(key)?.snapshot,
-        indexedEntry: entry,
-      });
-    }
-
-    return Array.from(comparisons.values()).sort((left, right) =>
-      left.label.localeCompare(right.label),
-    );
-  }
-
-  #variantKey(culture?: string, segment?: string) {
-    return `${culture?.trim().toLowerCase() || "invariant"}::${segment
-      ?.trim()
-      .toLowerCase() || "none"}`;
-  }
-
-  #variantLabel(
-    entry:
-      | Pick<RazorSearchDocumentSnapshotResponse, "route" | "culture" | "segment">
-      | Pick<RazorSearchDocumentIndexEntryResponse, "culture" | "segment">,
-  ) {
-    const parts = [];
-
-    if ("route" in entry && entry.route) {
-      parts.push(entry.route);
-    }
-
-    parts.push(entry.culture || "Invariant");
-
-    if (entry.segment) {
-      parts.push(entry.segment);
-    }
-
-    return parts.join(" • ");
-  }
-
-  #buildDiffRows(snapshotValue: string, indexedValue: string): DiffRow[] {
-    const snapshotLines = this.#toDiffLines(snapshotValue);
-    const indexedLines = this.#toDiffLines(indexedValue);
-
-    if (snapshotLines.length === 0 && indexedLines.length === 0) {
-      return [{ kind: "equal", value: "No content." }];
-    }
-
-    if (snapshotLines.length * indexedLines.length > 5000) {
-      return [
-        ...(snapshotValue
-          ? [{ kind: "removed", value: snapshotValue } satisfies DiffRow]
-          : []),
-        ...(indexedValue
-          ? [{ kind: "added", value: indexedValue } satisfies DiffRow]
-          : []),
-      ];
-    }
-
-    const matrix = Array.from({ length: snapshotLines.length + 1 }, () =>
-      Array<number>(indexedLines.length + 1).fill(0),
-    );
-
-    for (let leftIndex = snapshotLines.length - 1; leftIndex >= 0; leftIndex -= 1) {
-      for (
-        let rightIndex = indexedLines.length - 1;
-        rightIndex >= 0;
-        rightIndex -= 1
-      ) {
-        matrix[leftIndex][rightIndex] =
-          snapshotLines[leftIndex] === indexedLines[rightIndex]
-            ? matrix[leftIndex + 1][rightIndex + 1] + 1
-            : Math.max(
-                matrix[leftIndex + 1][rightIndex],
-                matrix[leftIndex][rightIndex + 1],
-              );
-      }
-    }
-
-    const rows: DiffRow[] = [];
-    let leftIndex = 0;
-    let rightIndex = 0;
-
-    while (leftIndex < snapshotLines.length && rightIndex < indexedLines.length) {
-      if (snapshotLines[leftIndex] === indexedLines[rightIndex]) {
-        rows.push({ kind: "equal", value: snapshotLines[leftIndex] });
-        leftIndex += 1;
-        rightIndex += 1;
-        continue;
-      }
-
-      if (matrix[leftIndex + 1][rightIndex] >= matrix[leftIndex][rightIndex + 1]) {
-        rows.push({ kind: "removed", value: snapshotLines[leftIndex] });
-        leftIndex += 1;
-        continue;
-      }
-
-      rows.push({ kind: "added", value: indexedLines[rightIndex] });
-      rightIndex += 1;
-    }
-
-    while (leftIndex < snapshotLines.length) {
-      rows.push({ kind: "removed", value: snapshotLines[leftIndex] });
-      leftIndex += 1;
-    }
-
-    while (rightIndex < indexedLines.length) {
-      rows.push({ kind: "added", value: indexedLines[rightIndex] });
-      rightIndex += 1;
-    }
-
-    return rows;
-  }
-
-  #toDiffLines(value: string) {
-    const normalized = value.trim();
-    if (!normalized) {
-      return [];
-    }
-
-    return normalized
-      .replace(/\r/g, "")
-      .split(/\n+/)
-      .flatMap((line) => this.#chunkDiffLine(line))
-      .filter((line) => line.length > 0);
-  }
-
-  #chunkDiffLine(value: string) {
-    const normalized = value.trim();
-    if (!normalized) {
-      return [];
-    }
-
-    const sentences = normalized
-      .split(/(?<=[.!?])\s+/)
-      .map((sentence) => sentence.trim())
-      .filter((sentence) => sentence.length > 0);
-
-    const chunks = sentences.length > 0 ? sentences : [normalized];
-    const wrapped: string[] = [];
-
-    for (const chunk of chunks) {
-      const words = chunk.split(/\s+/);
-      for (let index = 0; index < words.length; index += 18) {
-        wrapped.push(words.slice(index, index + 18).join(" "));
-      }
-    }
-
-    return wrapped;
-  }
-
-  #diffMarker(kind: DiffRow["kind"]) {
-    if (kind === "added") {
-      return "+";
-    }
-
-    if (kind === "removed") {
-      return "-";
-    }
-
-    return "=";
-  }
-
-  #joinValues(values: string[]) {
-    return values.length > 0 ? values.join("\n\n") : undefined;
   }
 
   #badgeColor(state: string) {

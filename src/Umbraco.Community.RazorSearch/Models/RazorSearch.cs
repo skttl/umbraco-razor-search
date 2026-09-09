@@ -12,8 +12,6 @@ public sealed class RazorSearch
 
     public string? Culture { get; private set; }
 
-    public string? Segment { get; set; }
-
     public int Skip { get; private set; }
 
     public int Take { get; private set; } = 10;
@@ -104,9 +102,11 @@ public sealed class RazorSearch
 
     public RazorSearch Page(int pageNumber, int pageSize)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(pageNumber, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(pageSize, 1);
         PageNumber = pageNumber;
         PageSize = pageSize;
-        Skip = Math.Max(0, pageNumber - 1) * pageSize;
+        Skip = checked((pageNumber - 1) * pageSize);
         Take = pageSize;
         return this;
     }

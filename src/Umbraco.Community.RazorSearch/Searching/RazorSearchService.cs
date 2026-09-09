@@ -1,9 +1,10 @@
-using System.Globalization;
+using Umbraco.Cms.Core.Services;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core;
 using Umbraco.Cms.Core.Models;
 using Umbraco.Cms.Core.Models.PublishedContent;
 using Umbraco.Cms.Core.PublishedCache;
+using Umbraco.Cms.Core.Routing;
 using Umbraco.Cms.Core.Web;
 using Umbraco.Cms.Search.Core.Extensions;
 using Umbraco.Cms.Search.Core.Models.Searching;
@@ -21,7 +22,9 @@ public sealed class RazorSearchService(
     IRazorSearchSnapshotStore snapshotStore,
     ISearcherResolver searcherResolver,
     IUmbracoContextFactory umbracoContextFactory,
-    IOptions<RazorSearchOptions> razorSearchOptions
+    IOptions<RazorSearchOptions> razorSearchOptions,
+    ILanguageService languageService,
+    IPublishedUrlProvider publishedUrlProvider
 ) : IRazorSearchService
 {
     public async Task<IRazorSearchResult> SearchAsync(
@@ -30,6 +33,8 @@ public sealed class RazorSearchService(
     )
     {
         RazorSearchRequestValidator.Validate(search);
+        string? culture = RazorSearchRequestValidator.ResolveCulture(search.Culture,
+            (await languageService.GetAllAsync()).Select(language => language.IsoCode));
 
         string[] terms = Tokenize(search.Text);
 
@@ -52,8 +57,8 @@ public sealed class RazorSearchService(
             filters,
             [],
             [new ScoreSorter(Direction.Descending)],
-            NormalizeCultureForSearchProvider(search.Culture),
-            NormalizeVariant(search.Segment),
+            culture,
+            null,
             CreateAccessContext(),
             search.Skip,
             search.Take,
@@ -63,13 +68,21 @@ public sealed class RazorSearchService(
         Document[] documents = searchResult.Documents.ToArray();
         if (documents.Length == 0)
         {
-            return EmptyResult(search);
+            // Some providers report zero total when Skip falls beyond the final hit.
+            // Read the first hit with identical constraints to retain the actual filtered total.
+            if (search.Skip > 0 && searchResult.Total == 0)
+            {
+                SearchResult firstPage = await searcher.SearchAsync(
+                    Constants.InternalIndex.Alias, search.Text, filters, [],
+                    [new ScoreSorter(Direction.Descending)], culture, null, CreateAccessContext(), 0, 1, 0);
+                return EmptyResult(search, firstPage.Total);
+            }
+            return EmptyResult(search, searchResult.Total);
         }
 
         SearchCandidate[] candidates = await BuildCandidatesAsync(
-            searcher,
             contentCache,
-            search,
+            culture,
             documents,
             cancellationToken
         );
@@ -79,8 +92,9 @@ public sealed class RazorSearchService(
             {
                 ContentKey = x.ContentKey,
                 Content = x.Content,
-                Url = ResolveUrl(search, x),
-                Title = ResolveTitle(search.Culture, x),
+                Url = publishedUrlProvider.GetUrl(x.Content, UrlMode.Absolute,
+                    string.IsNullOrEmpty(x.Snapshot.Culture) ? null : culture),
+                Title = ResolveTitle(x),
                 SummaryHtml = RazorSearchSummaryBuilder.Build(
                     ResolveSummarySource(x.Snapshot),
                     terms,
@@ -101,19 +115,18 @@ public sealed class RazorSearchService(
         return result;
     }
 
-    private static IRazorSearchResult EmptyResult(Models.RazorSearch search) =>
+    private static IRazorSearchResult EmptyResult(Models.RazorSearch search, long total = 0) =>
         new RazorSearchResult
         {
-            Total = 0,
+            Total = total,
             Skip = search.Skip,
             Take = search.Take,
             Items = [],
         };
 
     private async Task<SearchCandidate[]> BuildCandidatesAsync(
-        ISearcher _,
         IPublishedContentCache contentCache,
-        Models.RazorSearch search,
+        string? culture,
         IReadOnlyCollection<Document> documents,
         CancellationToken cancellationToken
     )
@@ -140,7 +153,7 @@ public sealed class RazorSearchService(
         return documentIds
             .Select(documentId =>
                 snapshotsByContentKey.TryGetValue(documentId, out RazorSearchSnapshot[]? contentSnapshots)
-                    ? CreateCandidate(contentSnapshots, contentCache, search, documentId)
+                    ? CreateCandidate(contentSnapshots, contentCache, culture, documentId)
                     : null)
             .Where(x => x is not null)
             .Select(x => x!)
@@ -150,7 +163,7 @@ public sealed class RazorSearchService(
     private static SearchCandidate? CreateCandidate(
         IReadOnlyCollection<RazorSearchSnapshot> snapshots,
         IPublishedContentCache contentCache,
-        Models.RazorSearch search,
+        string? culture,
         Guid contentKey
     )
     {
@@ -160,36 +173,13 @@ public sealed class RazorSearchService(
             return null;
         }
 
-        RazorSearchSnapshot? snapshot = SelectSnapshot(snapshots, search);
+        RazorSearchSnapshot? snapshot = SelectSnapshot(snapshots, culture);
         if (snapshot is null)
         {
             return null;
         }
 
         return new SearchCandidate(contentKey, content, snapshot);
-    }
-
-    private static bool MatchesCulture(Models.RazorSearch search, RazorSearchSnapshot snapshot)
-    {
-        string? requestedCulture = NormalizeCulture(search.Culture);
-        if (requestedCulture is null)
-        {
-            return true;
-        }
-
-        string? snapshotCulture = NormalizeCulture(snapshot.Culture);
-        return snapshotCulture is null || CulturesMatch(requestedCulture, snapshotCulture);
-    }
-
-    private static bool MatchesSegment(Models.RazorSearch search, RazorSearchSnapshot snapshot)
-    {
-        if (string.IsNullOrWhiteSpace(search.Segment))
-        {
-            return true;
-        }
-
-        return string.IsNullOrWhiteSpace(snapshot.Segment)
-            || string.Equals(snapshot.Segment, search.Segment, StringComparison.OrdinalIgnoreCase);
     }
 
     private Filter[] CreateMetadataFilters(Models.RazorSearch search)
@@ -271,55 +261,27 @@ public sealed class RazorSearchService(
         filters.Add(new IntegerExactFilter(Constants.InternalIndex.ExcludedFlagFieldName, [1], true));
     }
 
-    private static string ResolveTitle(string? culture, SearchCandidate candidate) =>
-        ResolveTitle(culture, candidate.Snapshot, candidate.Content);
-
-    private static string ResolveTitle(
-        string? culture,
-        RazorSearchSnapshot snapshot,
-        IPublishedContent content
-    ) =>
-        string.IsNullOrWhiteSpace(snapshot.TitleText) is false ? snapshot.TitleText
-        : ResolvePublishedName(content, culture, snapshot.Culture);
-
-    private static string ResolveUrl(Models.RazorSearch search, SearchCandidate candidate)
-    {
-        if (string.IsNullOrWhiteSpace(candidate.Snapshot.FinalUrl) is false)
-        {
-            return candidate.Snapshot.FinalUrl;
-        }
-
-        string? url = candidate.Content.Url(
-            NormalizeCulture(candidate.Snapshot.Culture) ?? NormalizeCulture(search.Culture),
-            UrlMode.Absolute);
-        return string.IsNullOrWhiteSpace(url) ? candidate.Snapshot.Route : url;
-    }
+    private static string ResolveTitle(SearchCandidate candidate)
+        => string.IsNullOrWhiteSpace(candidate.Snapshot.TitleText) is false
+            ? candidate.Snapshot.TitleText
+            : candidate.Snapshot.Culture is null
+                ? candidate.Content.Name
+                : candidate.Content.Name(candidate.Snapshot.Culture);
 
     private static string ResolveSummarySource(RazorSearchSnapshot snapshot) =>
         string.IsNullOrWhiteSpace(snapshot.SummaryText) is false
             ? snapshot.SummaryText
             : snapshot.BodyText ?? snapshot.Snapshot;
 
-    private static RazorSearchSnapshot? SelectSnapshot(
+    internal static RazorSearchSnapshot? SelectSnapshot(
         IReadOnlyCollection<RazorSearchSnapshot> snapshots,
-        Models.RazorSearch search
-    )
-    {
-        return snapshots
-            .Where(x =>
-                string.Equals(
-                    x.RenderStatus,
-                    RazorSearchSnapshotStatuses.Success,
-                    StringComparison.OrdinalIgnoreCase
-                )
-            )
-            .Where(x => MatchesCulture(search, x))
-            .Where(x => MatchesSegment(search, x))
-            .OrderByDescending(x => GetCultureMatchRank(search.Culture, x.Culture))
-            .ThenByDescending(x => MatchesExactVariant(search.Segment, x.Segment))
+        string? culture)
+        => snapshots
+            .Where(x => x.RenderStatus == RazorSearchSnapshotStatuses.Success)
+            .Where(x => string.IsNullOrEmpty(x.Culture) || string.Equals(x.Culture, culture, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(x => string.Equals(x.Culture, culture, StringComparison.OrdinalIgnoreCase))
             .ThenByDescending(x => x.UpdatedAtUtc)
             .FirstOrDefault();
-    }
 
     private static string[] Tokenize(string text) =>
         text.Split(
@@ -329,109 +291,7 @@ public sealed class RazorSearchService(
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-    private static bool MatchesExactVariant(string? requestedValue, string? snapshotValue)
-    {
-        if (string.IsNullOrWhiteSpace(requestedValue))
-        {
-            return string.IsNullOrWhiteSpace(snapshotValue);
-        }
-
-        return string.Equals(requestedValue, snapshotValue, StringComparison.OrdinalIgnoreCase);
-    }
-
     private static AccessContext CreateAccessContext() => new(Guid.Empty, []);
-
-    private static string? NormalizeVariant(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value;
-
-    private static string? NormalizeCultureForSearchProvider(string? culture)
-    {
-        string? normalizedCulture = NormalizeCulture(culture);
-        if (normalizedCulture is null)
-        {
-            return null;
-        }
-
-        return IsNeutralCulture(normalizedCulture)
-            ? null
-            : normalizedCulture;
-    }
-
-    private static string ResolvePublishedName(
-        IPublishedContent content,
-        string? requestedCulture,
-        string? snapshotCulture)
-    {
-        string? resolvedCulture = NormalizeCulture(snapshotCulture) ?? NormalizeCulture(requestedCulture);
-        return resolvedCulture is null
-            ? content.Name
-            : content.Name(resolvedCulture);
-    }
-
-    private static int GetCultureMatchRank(string? requestedCulture, string? snapshotCulture)
-    {
-        string? normalizedRequestedCulture = NormalizeCulture(requestedCulture);
-        string? normalizedSnapshotCulture = NormalizeCulture(snapshotCulture);
-
-        if (normalizedRequestedCulture is null)
-        {
-            return normalizedSnapshotCulture is null ? 2 : 1;
-        }
-
-        if (normalizedSnapshotCulture is null)
-        {
-            return 1;
-        }
-
-        if (string.Equals(normalizedRequestedCulture, normalizedSnapshotCulture, StringComparison.OrdinalIgnoreCase))
-        {
-            return 3;
-        }
-
-        return CulturesMatch(normalizedRequestedCulture, normalizedSnapshotCulture) ? 2 : 0;
-    }
-
-    private static bool CulturesMatch(string requestedCulture, string snapshotCulture)
-    {
-        if (string.Equals(requestedCulture, snapshotCulture, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        string requestedLanguage = GetLanguagePart(requestedCulture);
-        string snapshotLanguage = GetLanguagePart(snapshotCulture);
-
-        return string.Equals(requestedLanguage, snapshotLanguage, StringComparison.OrdinalIgnoreCase)
-            && (IsNeutralCulture(requestedCulture) || IsNeutralCulture(snapshotCulture));
-    }
-
-    private static string GetLanguagePart(string culture)
-    {
-        int separatorIndex = culture.IndexOf('-');
-        return separatorIndex < 0 ? culture : culture[..separatorIndex];
-    }
-
-    private static bool IsNeutralCulture(string culture) => culture.Contains('-') is false;
-
-    private static string? NormalizeCulture(string? culture)
-    {
-        string? normalizedCulture = NormalizeVariant(culture);
-        if (normalizedCulture is null)
-        {
-            return null;
-        }
-
-        normalizedCulture = normalizedCulture.Replace('_', '-');
-
-        try
-        {
-            return CultureInfo.GetCultureInfo(normalizedCulture).Name;
-        }
-        catch (CultureNotFoundException)
-        {
-            return normalizedCulture;
-        }
-    }
 
     private sealed record SearchCandidate(
         Guid ContentKey,

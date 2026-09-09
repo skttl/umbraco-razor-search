@@ -1,6 +1,6 @@
 namespace Umbraco.Community.RazorSearch.Api.Models;
 
-public sealed class RazorSearchDocumentStatusResponse
+public sealed record RazorSearchDocumentStatusResponse
 {
     public Guid DocumentId { get; init; }
 
@@ -24,5 +24,5 @@ public sealed class RazorSearchDocumentStatusResponse
 
     public IReadOnlyCollection<RazorSearchDocumentSnapshotResponse> Snapshots { get; init; } = [];
 
-    public IReadOnlyCollection<RazorSearchDocumentIndexEntryResponse> IndexedEntries { get; init; } = [];
+    public IReadOnlyCollection<RazorSearchDocumentIndexEntryResponse> ExpectedIndexEntries { get; init; } = [];
 }

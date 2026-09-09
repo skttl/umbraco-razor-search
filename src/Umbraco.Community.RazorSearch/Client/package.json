@@ -1,10 +1,11 @@
 {
   "name": "umbraco-community-razor-search-backoffice",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.0.0-dev",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=24.13",
+    "npm": ">=11"
   },
   "scripts": {
     "build": "vite build",
@@ -14,8 +15,14 @@
   },
   "devDependencies": {
     "@types/node": "22.15.29",
-    "@umbraco-cms/backoffice": "17.0.0",
+    "@umbraco-cms/backoffice": "18.1.1",
     "typescript": "5.8.3",
-    "vite": "6.4.1"
+    "vite": "8.2.2"
+  },
+  "overrides": {
+    "@hey-api/json-schema-ref-parser": {
+      "js-yaml": "4.3.2"
+    },
+    "dompurify": "3.4.15"
   }
 }

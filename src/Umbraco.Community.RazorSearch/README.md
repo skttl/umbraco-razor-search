@@ -1,62 +1,82 @@
 # RazorSearch
 
-Search rendered Umbraco pages with Umbraco Search.
+Search rendered Umbraco pages with Umbraco Search. RazorSearch stores HTML snapshots, extracts title, headings and body text, and contributes them to a dedicated search index.
 
-## Installation
+This branch targets Umbraco 18.1.1+ within 18.x, .NET 10 and Umbraco Search Core 18.1.0+. Use `v17/main` and the 17.x package line for Umbraco 17. The first releases are beta packages. SQLite is not release-verified in this beta; known concurrency limitations are recorded in the release notes.
 
-RazorSearch requires **Umbraco 17**.
+## Install with Examine
 
-```bash
-dotnet add package Umbraco.Community.RazorSearch
+```powershell
+dotnet add package Umbraco.Community.RazorSearch.Examine --version 18.0.0-beta.1
 ```
 
-If the host uses `Umbraco.Cms.Search.Provider.Examine`, also install:
-
-```bash
-dotnet add package Umbraco.Community.RazorSearch.Examine
-```
-
-## Host setup
-
-RazorSearch references `Umbraco.Cms.Search.Core`, but it does **not** bootstrap Umbraco Search for the consuming application.
-
-Your application still needs to:
-
-- call `AddSearchCore()`
-- register the provider you want to use
-- configure that provider for the host application
-
-For Examine, the companion package takes care of the RazorSearch-specific Lucene index registration and field definitions. The consuming app still does not need to know the internal RazorSearch index alias.
-
-`AddSearchCore()` comes from the `Umbraco.Cms.Search` package.
-
-Example:
+The companion includes the core package and creates its physical Examine index. Enable Search and the provider in the consuming application's `Program.cs`:
 
 ```csharp
+using Umbraco.Cms.Search.Core.DependencyInjection;
+using Umbraco.Cms.Search.Provider.Examine.DependencyInjection;
+
 builder.CreateUmbracoBuilder()
     .AddBackOffice()
     .AddWebsite()
     .AddComposers()
-    .AddSearchCore();
+    .AddSearchCore()
+    .AddExamineSearchProvider()
+    .Build();
 ```
 
-After installation, queue a backfill or rebuild so existing published content gets snapshots.
+Keep the application's normal Umbraco boot, middleware and endpoint setup. Start the site, then queue a rebuild of existing published content from the RazorSearch backoffice dashboard.
 
-Most projects do not need extra `RazorSearch` configuration unless they want to change extraction behavior or exclude content by content type or property alias.
+Core is provider-agnostic. It does not call `AddSearchCore()`, register a provider or configure the application's published-content index. For a different provider, install `Umbraco.Community.RazorSearch` directly and configure that provider yourself. Examine is the provider covered by the beta acceptance matrix.
 
-## What the package adds
+## Configuration
 
-- EF Core-backed snapshot persistence
-- automatic database migrations for the snapshot table
-- a background render queue
-- an HTTP renderer
-- configurable extraction for title, summary, headings, and body text from rendered HTML and published Umbraco properties
-- an internal dedicated RazorSearch index backed by stored snapshots
-- management endpoints and backoffice tooling for rebuild and backfill flows
+```json
+{
+  "Umbraco": {
+    "Community": {
+      "RazorSearch": {
+        "SnapshotExtraction": {
+          "BodySources": [{ "Type": "selector", "Selector": "main" }]
+        }
+      }
+    }
+  }
+}
+```
 
-## Good to know
+Settings live under `Umbraco:Community:RazorSearch`. The NuGet package includes an appsettings-schema. The first build after installation copies it to the app and registers it in `appsettings-schema.json`, including when core is installed transitively through the companion.
 
-- Queueing or rebuilding snapshots now refreshes the RazorSearch index through `Umbraco.Cms.Search.Core` after snapshot writes and deletes.
-- If you use `SearchRenderingContext.IsActive` in views, RazorSearch will automatically use a fallback render token during built-in HTTP rendering. Configure `RazorSearch:RenderRequestToken` only if you want full control over that token value.
-- The options `ExcludedContentTypeAliases` and `ExcludeFromSearchPropertyAlias` are enforced automatically during queueing and through index-native filters at runtime search.
-- Snapshot extraction can be customized through `RazorSearch:SnapshotExtraction`, including object-based CSS-selector and Umbraco-property sources plus CSS-selector-based removal before text extraction.
+## Search
+
+```csharp
+using Umbraco.Community.RazorSearch;
+using Umbraco.Community.RazorSearch.Models;
+
+// Inject IRazorSearchService as searchService.
+var request = new RazorSearch("umbraco")
+    .InCulture("da-DK")
+    .Page(1, 10);
+IRazorSearchResult result = await searchService.SearchAsync(request);
+```
+
+A specified culture must match a configured Umbraco culture. The search includes that culture and invariant documents. Without a culture it searches invariant documents only. There is no implicit request-culture fallback.
+
+## Operation
+
+Rendering and indexing happen asynchronously after publication. Each document and culture has one current snapshot. A temporary rendering failure preserves the last usable snapshot. Unpublishing, deleting and excluding content remove it from search.
+
+The render queue and its history live in memory. Restarting the app loses pending work. Run a manual rebuild when necessary, including after changes to templates, shared content or extraction rules.
+
+Load balancing targets one dedicated backoffice server and multiple frontends with a shared SQL Server database and separate local Examine indexes. The backoffice owns rendering; Umbraco Search distributes index refreshes. Configure an internal render destination to avoid a stale frontend or CDN response. Multiple active backoffice servers are outside the beta scope.
+
+## Documentation
+
+- [Installation](https://github.com/skttl/umbraco-razor-search/blob/main/docs/installation/README.md)
+- [Configuration](https://github.com/skttl/umbraco-razor-search/blob/main/docs/configuration/README.md)
+- [Usage](https://github.com/skttl/umbraco-razor-search/blob/main/docs/usage/README.md)
+- [Indexing and load balancing](https://github.com/skttl/umbraco-razor-search/blob/main/docs/indexing/README.md)
+- [Troubleshooting](https://github.com/skttl/umbraco-razor-search/blob/main/docs/troubleshooting/README.md)
+- [Customization](https://github.com/skttl/umbraco-razor-search/blob/main/docs/customization/README.md)
+- [Migrating from FullTextSearch](https://github.com/skttl/umbraco-razor-search/blob/main/docs/migrating-from-fulltextsearch/README.md)
+- [Beta release notes](https://github.com/skttl/umbraco-razor-search/blob/main/docs/release-notes.md)

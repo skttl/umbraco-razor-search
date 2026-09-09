@@ -1,15 +1,15 @@
-﻿@inherits Umbraco.Cms.Web.Common.Views.UmbracoViewPage<ContentModels.Author>
+@inherits Umbraco.Cms.Web.Common.Views.UmbracoViewPage<ContentModels.Author>
 
 @using Clean.Core.Models.ViewModels
 @using ContentModels = Umbraco.Cms.Web.Common.PublishedModels
 
 @{
     Layout = "master.cshtml";
-    var authorListPage = Model.Parent as AuthorList;
+    var authorListPage = Model.Parent() as AuthorList;
 }
 
 
-@await Html.PartialAsync("~/Views/Partials/pageHeader.cshtml", new PageHeaderViewModel(Model.Name, Model.Title, Model.Subtitle, authorListPage.MainImage, null, null))
+@await Html.PartialAsync("~/Views/Partials/pageHeader.cshtml", new PageHeaderViewModel(Model.Name, Model.Title, Model.Subtitle, authorListPage?.MainImage, null, null))
 
 <article>
     <div class="container">

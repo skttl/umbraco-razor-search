@@ -3,266 +3,136 @@ using System.Threading.Channels;
 using Microsoft.Extensions.Options;
 using Umbraco.Community.RazorSearch.Configuration;
 using Umbraco.Community.RazorSearch.Models;
-using Umbraco.Community.RazorSearch.Rendering;
 
 namespace Umbraco.Community.RazorSearch.Services;
 
 internal sealed class InMemoryRazorSearchRenderQueue : IRazorSearchRenderQueue, IBackgroundRazorSearchRenderQueue
 {
-    private readonly Lock _batchLock = new();
-    private readonly ConcurrentDictionary<Guid, RazorSearchRenderJob> _jobs = new();
-    private readonly ConcurrentDictionary<Guid, RazorSearchRenderJobStatus> _statuses = new();
-    private readonly ConcurrentDictionary<RazorSearchRenderDeduplicationKey, Guid> _activeJobs = new();
-    private readonly Channel<RazorSearchRenderJob> _channel;
-    private readonly IRazorSearchQueueActivityNotifier _queueActivityNotifier;
+    private readonly Lock _sync = new();
+    private readonly Dictionary<Guid, RazorSearchRenderJob> _jobs = [];
+    private readonly Dictionary<Guid, RazorSearchRenderJobStatus> _statuses = [];
+    private readonly Dictionary<(Guid, string), Guid> _activeJobs = [];
+    private readonly Channel<Guid> _channel;
+    private readonly IRazorSearchQueueActivityNotifier _notifier;
     private readonly RazorSearchOptions _options;
-    private long _currentBatchId;
+    private readonly RazorSearchWorkCoordinator _coordinator;
+    private long _batchId;
 
-    public InMemoryRazorSearchRenderQueue(
-        IOptionsMonitor<RazorSearchOptions> options,
-        IRazorSearchQueueActivityNotifier queueActivityNotifier)
+    public InMemoryRazorSearchRenderQueue(IOptionsMonitor<RazorSearchOptions> options,
+        IRazorSearchQueueActivityNotifier notifier, RazorSearchWorkCoordinator coordinator)
     {
         _options = options.CurrentValue;
-        _queueActivityNotifier = queueActivityNotifier;
-
-        _channel = _options.RenderQueue.Capacity > 0
-            ? Channel.CreateBounded<RazorSearchRenderJob>(new BoundedChannelOptions(_options.RenderQueue.Capacity)
-            {
-                FullMode = BoundedChannelFullMode.Wait,
-                SingleReader = true,
-                SingleWriter = false,
-            })
-            : Channel.CreateUnbounded<RazorSearchRenderJob>(new UnboundedChannelOptions
-            {
-                SingleReader = true,
-                SingleWriter = false,
-            });
+        _notifier = notifier;
+        _coordinator = coordinator;
+        _channel = Channel.CreateBounded<Guid>(new BoundedChannelOptions(Math.Max(1, _options.RenderQueue.Capacity))
+        { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
     }
 
-    public async ValueTask<RazorSearchRenderEnqueueResult> EnqueueAsync(
-        RazorSearchRenderRequest request,
-        CancellationToken cancellationToken = default)
+    public async ValueTask<RazorSearchRenderEnqueueResult> EnqueueAsync(RazorSearchRenderRequest request, CancellationToken cancellationToken = default)
     {
-        RazorSearchRenderDeduplicationKey deduplicationKey = RazorSearchRenderDeduplicationKey.Create(
-            request.ContentKey,
-            request.Culture);
-
-        if (_options.RenderQueue.DeduplicateActiveJobs && request.Force is false)
+        RazorSearchRenderJob job;
+        RazorSearchRenderJobStatus status;
+        using (await _coordinator.EnterAsync(request.ContentKey, cancellationToken))
         {
-            RazorSearchRenderEnqueueResult? duplicate = TryGetDuplicate(deduplicationKey);
-            if (duplicate is not null)
+            lock (_sync)
             {
-                return duplicate;
+                var key = Key(request.ContentKey, request.Culture);
+                if (_activeJobs.TryGetValue(key, out Guid previousId)
+                    && _statuses[previousId].State == RazorSearchRenderJobState.Queued)
+                {
+                    // A waiting job always reads the latest request when dequeued.
+                    job = _jobs[previousId] with { Route = request.Route, Renderer = request.Renderer ?? _options.DefaultRenderer };
+                    _jobs[previousId] = job;
+                    status = _statuses[previousId] with { Route = job.Route, Renderer = job.Renderer };
+                    _statuses[previousId] = status;
+                    return new() { Job = job, Status = status with { IsDuplicate = true } };
+                }
+                if (!_statuses.Values.Any(x => x.State is RazorSearchRenderJobState.Queued or RazorSearchRenderJobState.Running))
+                    _batchId++;
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                job = new() { Id = Guid.NewGuid(), ContentKey = request.ContentKey, Culture = request.Culture,
+                    Route = request.Route, Renderer = request.Renderer ?? _options.DefaultRenderer, EnqueuedAtUtc = now };
+                status = new() { JobId = job.Id, BatchId = _batchId, ContentKey = job.ContentKey, Culture = job.Culture,
+                    Route = job.Route, Renderer = job.Renderer, State = RazorSearchRenderJobState.Queued,
+                    EnqueuedAtUtc = now, UpdatedAtUtc = now };
+                _jobs[job.Id] = job;
+                _statuses[job.Id] = status;
+                // A running generation is superseded and may no longer commit its result.
+                _activeJobs[key] = job.Id;
             }
         }
-
-        DateTimeOffset now = DateTimeOffset.UtcNow;
-        long batchId;
-
-        lock (_batchLock)
-        {
-            if (HasActiveJobsUnsafe() is false)
-            {
-                _currentBatchId++;
-            }
-
-            batchId = _currentBatchId;
-        }
-
-        RazorSearchRenderJob job = new()
-        {
-            Id = Guid.NewGuid(),
-            ContentKey = request.ContentKey,
-            Culture = request.Culture,
-            Segment = request.Segment,
-            Route = request.Route,
-            Renderer = string.IsNullOrWhiteSpace(request.Renderer)
-                ? _options.DefaultRenderer
-                : request.Renderer,
-            EnqueuedAtUtc = now,
-        };
-
-        if (_options.RenderQueue.DeduplicateActiveJobs
-            && request.Force is false
-            && _activeJobs.TryAdd(deduplicationKey, job.Id) is false)
-        {
-            RazorSearchRenderEnqueueResult? duplicate = TryGetDuplicate(deduplicationKey);
-            if (duplicate is not null)
-            {
-                return duplicate;
-            }
-        }
-
-        RazorSearchRenderJobStatus status = new()
-        {
-            JobId = job.Id,
-            BatchId = batchId,
-            ContentKey = job.ContentKey,
-            Route = job.Route,
-            Culture = job.Culture,
-            Segment = job.Segment,
-            Renderer = job.Renderer,
-            State = RazorSearchRenderJobState.Queued,
-            EnqueuedAtUtc = now,
-            UpdatedAtUtc = now,
-            AttemptCount = job.AttemptCount,
-        };
-
-        _jobs[job.Id] = job;
-        _statuses[job.Id] = status;
-
-        try
-        {
-            await _channel.Writer.WriteAsync(job, cancellationToken);
-            _queueActivityNotifier.Publish();
-        }
-        catch
-        {
-            _jobs.TryRemove(job.Id, out _);
-            _statuses.TryRemove(job.Id, out _);
-            ReleaseDeduplicationKey(job);
-            throw;
-        }
-
-        return new RazorSearchRenderEnqueueResult
-        {
-            Job = job,
-            Status = status,
-        };
+        try { await _channel.Writer.WriteAsync(job.Id, cancellationToken); }
+        catch { MarkCancelled(job, "Enqueue was cancelled."); throw; }
+        _notifier.Publish();
+        return new() { Job = job, Status = status };
     }
 
-    public bool TryGetStatus(Guid jobId, out RazorSearchRenderJobStatus? status) => _statuses.TryGetValue(jobId, out status);
+    public async ValueTask<RazorSearchRenderJob> DequeueAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            Guid id = await _channel.Reader.ReadAsync(cancellationToken);
+            lock (_sync)
+            {
+                if (!_jobs.TryGetValue(id, out var job) || _statuses[id].State != RazorSearchRenderJobState.Queued) continue;
+                _statuses[id] = _statuses[id] with { State = RazorSearchRenderJobState.Running, StartedAtUtc = DateTimeOffset.UtcNow };
+                return job;
+            }
+        }
+    }
 
-    public IReadOnlyCollection<RazorSearchRenderJobStatus> GetStatuses(Guid contentKey) =>
-        _statuses.Values
-            .Where(x => x.ContentKey == contentKey)
-            .OrderByDescending(x => x.UpdatedAtUtc)
-            .ToArray();
+    public bool IsCurrent(RazorSearchRenderJob job)
+    { lock (_sync) return _activeJobs.TryGetValue(Key(job.ContentKey, job.Culture), out Guid id) && id == job.Id; }
 
-    public IReadOnlyCollection<RazorSearchRenderJobStatus> GetAllStatuses() =>
-        _statuses.Values
-            .OrderByDescending(x => x.UpdatedAtUtc)
-            .ToArray();
+    public void Invalidate(Guid contentKey, string? culture = null, bool allCultures = true)
+    {
+        lock (_sync)
+        {
+            foreach (var pair in _activeJobs.Where(x => x.Key.Item1 == contentKey && (allCultures || x.Key == Key(contentKey, culture))).ToArray())
+            {
+                _activeJobs.Remove(pair.Key);
+                var status = _statuses[pair.Value];
+                _statuses[pair.Value] = status with { State = RazorSearchRenderJobState.Cancelled,
+                    ErrorMessage = "Content changed while this job was pending.", CompletedAtUtc = DateTimeOffset.UtcNow, UpdatedAtUtc = DateTimeOffset.UtcNow };
+            }
+            Prune();
+        }
+        _notifier.Publish();
+    }
 
-    public ValueTask<RazorSearchRenderJob> DequeueAsync(CancellationToken cancellationToken) => _channel.Reader.ReadAsync(cancellationToken);
-
+    public bool TryGetStatus(Guid jobId, out RazorSearchRenderJobStatus? status)
+    { lock (_sync) return _statuses.TryGetValue(jobId, out status); }
+    public IReadOnlyCollection<RazorSearchRenderJobStatus> GetStatuses(Guid contentKey)
+    { lock (_sync) return _statuses.Values.Where(x => x.ContentKey == contentKey).OrderByDescending(x => x.UpdatedAtUtc).ToArray(); }
+    public IReadOnlyCollection<RazorSearchRenderJobStatus> GetAllStatuses()
+    { lock (_sync) return _statuses.Values.OrderByDescending(x => x.UpdatedAtUtc).ToArray(); }
     public void MarkRunning(RazorSearchRenderJob job)
     {
-        if (_statuses.TryGetValue(job.Id, out RazorSearchRenderJobStatus? status) is false)
-        {
-            return;
-        }
-
-        _statuses[job.Id] = status with
-        {
-            State = RazorSearchRenderJobState.Running,
-            StartedAtUtc = DateTimeOffset.UtcNow,
-            UpdatedAtUtc = DateTimeOffset.UtcNow,
-            IsDuplicate = false,
-        };
-
-        _queueActivityNotifier.Publish();
+        lock (_sync) if (_statuses.TryGetValue(job.Id, out var status))
+            _statuses[job.Id] = status with { Route = job.Route, AttemptCount = job.AttemptCount, UpdatedAtUtc = DateTimeOffset.UtcNow };
+        _notifier.Publish();
     }
-
-    public void MarkCompleted(RazorSearchRenderJob job, RazorSearchRenderResult result)
+    public void MarkCompleted(RazorSearchRenderJob job, RazorSearchRenderResult result) => Finish(job, RazorSearchRenderJobState.Succeeded, null);
+    public void MarkFailed(RazorSearchRenderJob job, string errorMessage) => Finish(job, RazorSearchRenderJobState.Failed, errorMessage);
+    public void MarkCancelled(RazorSearchRenderJob job, string? errorMessage = null) => Finish(job, RazorSearchRenderJobState.Cancelled, errorMessage);
+    private void Finish(RazorSearchRenderJob job, RazorSearchRenderJobState state, string? error)
     {
-        if (_statuses.TryGetValue(job.Id, out RazorSearchRenderJobStatus? status))
+        lock (_sync)
         {
-            _statuses[job.Id] = status with
-            {
-                State = RazorSearchRenderJobState.Succeeded,
-                CompletedAtUtc = result.CompletedAtUtc,
-                UpdatedAtUtc = result.CompletedAtUtc,
-                ErrorMessage = null,
-                IsDuplicate = false,
-            };
+            if (_statuses.TryGetValue(job.Id, out var status))
+                _statuses[job.Id] = status with { State = state, ErrorMessage = error,
+                    CompletedAtUtc = DateTimeOffset.UtcNow, UpdatedAtUtc = DateTimeOffset.UtcNow, AttemptCount = Math.Max(status.AttemptCount, job.AttemptCount) };
+            var key = Key(job.ContentKey, job.Culture);
+            if (_activeJobs.TryGetValue(key, out Guid id) && id == job.Id) _activeJobs.Remove(key);
+            Prune();
         }
-
-        ReleaseDeduplicationKey(job);
-        _queueActivityNotifier.Publish();
+        _notifier.Publish();
     }
-
-    public void MarkFailed(RazorSearchRenderJob job, string errorMessage)
+    private void Prune()
     {
-        DateTimeOffset now = DateTimeOffset.UtcNow;
-
-        if (_statuses.TryGetValue(job.Id, out RazorSearchRenderJobStatus? status))
-        {
-            _statuses[job.Id] = status with
-            {
-                State = RazorSearchRenderJobState.Failed,
-                CompletedAtUtc = now,
-                UpdatedAtUtc = now,
-                ErrorMessage = errorMessage,
-                IsDuplicate = false,
-            };
-        }
-
-        ReleaseDeduplicationKey(job);
-        _queueActivityNotifier.Publish();
+        foreach (var status in _statuses.Values.Where(x => x.State is not (RazorSearchRenderJobState.Queued or RazorSearchRenderJobState.Running))
+            .OrderByDescending(x => x.UpdatedAtUtc).Skip(_options.RenderQueue.CompletedJobRetention).ToArray())
+        { _statuses.Remove(status.JobId); _jobs.Remove(status.JobId); }
     }
-
-    public void MarkCancelled(RazorSearchRenderJob job, string? errorMessage = null)
-    {
-        DateTimeOffset now = DateTimeOffset.UtcNow;
-
-        if (_statuses.TryGetValue(job.Id, out RazorSearchRenderJobStatus? status))
-        {
-            _statuses[job.Id] = status with
-            {
-                State = RazorSearchRenderJobState.Cancelled,
-                CompletedAtUtc = now,
-                UpdatedAtUtc = now,
-                ErrorMessage = errorMessage,
-                IsDuplicate = false,
-            };
-        }
-
-        ReleaseDeduplicationKey(job);
-        _queueActivityNotifier.Publish();
-    }
-
-    private RazorSearchRenderEnqueueResult? TryGetDuplicate(RazorSearchRenderDeduplicationKey deduplicationKey)
-    {
-        if (_activeJobs.TryGetValue(deduplicationKey, out Guid existingJobId) is false)
-        {
-            return null;
-        }
-
-        if (_jobs.TryGetValue(existingJobId, out RazorSearchRenderJob? existingJob) is false
-            || _statuses.TryGetValue(existingJobId, out RazorSearchRenderJobStatus? existingStatus) is false)
-        {
-            _activeJobs.TryRemove(deduplicationKey, out _);
-            return null;
-        }
-
-        return new RazorSearchRenderEnqueueResult
-        {
-            Job = existingJob,
-            Status = existingStatus with
-            {
-                IsDuplicate = true,
-                UpdatedAtUtc = DateTimeOffset.UtcNow,
-            },
-        };
-    }
-
-    private void ReleaseDeduplicationKey(RazorSearchRenderJob job)
-    {
-        RazorSearchRenderDeduplicationKey key = RazorSearchRenderDeduplicationKey.Create(job.ContentKey, job.Culture);
-
-        if (_activeJobs.TryGetValue(key, out Guid jobId) && jobId == job.Id)
-        {
-            _activeJobs.TryRemove(key, out _);
-        }
-    }
-
-    private bool HasActiveJobsUnsafe() => _statuses.Values.Any(x =>
-        x.State is RazorSearchRenderJobState.Queued or RazorSearchRenderJobState.Running);
-
-    private readonly record struct RazorSearchRenderDeduplicationKey(Guid ContentKey, string Culture)
-    {
-        public static RazorSearchRenderDeduplicationKey Create(Guid contentKey, string? culture) =>
-            new(contentKey, (culture ?? string.Empty).ToUpperInvariant());
-    }
+    private static (Guid, string) Key(Guid key, string? culture) => (key, (culture ?? string.Empty).Trim().ToUpperInvariant());
 }

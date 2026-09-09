@@ -8,9 +8,6 @@ public sealed record RazorSearchRenderRequest
 
     public string? Culture { get; init; }
 
-    public string? Segment { get; init; }
-
     public string? Renderer { get; init; }
 
-    public bool Force { get; init; }
 }

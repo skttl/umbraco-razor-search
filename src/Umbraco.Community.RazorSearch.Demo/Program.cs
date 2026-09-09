@@ -1,15 +1,20 @@
 using Umbraco.Cms.Search.Core.DependencyInjection;
 using Umbraco.Cms.Search.Provider.Examine.DependencyInjection;
+using Umbraco.Cms.Core.Sync;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-builder.CreateUmbracoBuilder()
+var umbracoBuilder = builder.CreateUmbracoBuilder()
     .AddBackOffice()
     .AddWebsite()
     .AddComposers()
     .AddSearchCore()
-    .AddExamineSearchProvider()
-    .Build();
+    .AddExamineSearchProvider();
+
+// The demo is deliberately a single-server installation. Avoid the startup
+// window where the default server-role election reports Unknown.
+umbracoBuilder.Services.AddSingleton<IServerRoleAccessor, DemoServerRoleAccessor>();
+umbracoBuilder.Build();
 
 WebApplication app = builder.Build();
 
@@ -28,3 +33,8 @@ app.UseUmbraco()
     });
 
 await app.RunAsync();
+
+sealed class DemoServerRoleAccessor : IServerRoleAccessor
+{
+    public ServerRole CurrentServerRole => ServerRole.Single;
+}

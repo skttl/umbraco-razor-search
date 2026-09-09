@@ -1,96 +1,62 @@
 # Installation
 
-This guide covers the package installation itself and the host-level setup RazorSearch expects.
+Use the package line matching the CMS major. `main` targets Umbraco 18.1.1+ and Search Core 18.1.0+. `v17/main` targets Umbraco 17.6.2+ and Search Core 17.1.0+. Both use .NET 10. SQL Server supports single-server and the documented load-balanced topology. SQLite is intended for one app instance but is not release-verified in this beta; see the [known limitations](../release-notes.md).
 
-## Requirements
+## Examine application
 
-- Umbraco 17
-- A host application that uses Umbraco Search
-- A configured Umbraco Search provider for the host application
-
-RazorSearch depends on `Umbraco.Cms.Search.Core`, but it does not bootstrap that pipeline for you.
-
-## Step 1: Install the package
-
-```bash
-dotnet add package Umbraco.Community.RazorSearch
+```powershell
+dotnet add package Umbraco.Community.RazorSearch.Examine --version 18.0.0-beta.1
 ```
 
-If the host uses `Umbraco.Cms.Search.Provider.Examine`, also install:
+The companion installs core transitively. For Umbraco 17 use `17.0.0-beta.1`. During local acceptance, install from the `artifacts/packages` feed produced by `build/Validate.ps1`; these versions are not available on NuGet until published.
 
-```bash
-dotnet add package Umbraco.Community.RazorSearch.Examine
-```
-
-## Step 2: Enable Umbraco Search in the host
-
-At minimum, your host must call `AddSearchCore()`:
-
-`AddSearchCore()` comes from the `Umbraco.Cms.Search` package.
+A complete `Program.cs`:
 
 ```csharp
+using Umbraco.Cms.Search.Core.DependencyInjection;
+using Umbraco.Cms.Search.Provider.Examine.DependencyInjection;
+
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.CreateUmbracoBuilder()
     .AddBackOffice()
     .AddWebsite()
     .AddComposers()
-    .AddSearchCore();
+    .AddSearchCore()
+    .AddExamineSearchProvider()
+    .Build();
+
+WebApplication app = builder.Build();
+await app.BootUmbracoAsync();
+app.UseUmbraco()
+    .WithMiddleware(u =>
+    {
+        u.UseBackOffice();
+        u.UseWebsite();
+    })
+    .WithEndpoints(u =>
+    {
+        u.UseBackOfficeEndpoints();
+        u.UseWebsiteEndpoints();
+    });
+await app.RunAsync();
 ```
 
-RazorSearch does not register a concrete search provider. If you use Examine or another provider, that provider registration belongs in the consuming application as well.
+`AddSearchCore()` is provided by `Umbraco.Cms.Search.Core`. The companion registers the physical RazorSearch Examine index and fields. Your app owns provider registration and any ordinary published-content index configuration.
 
-For Examine specifically, the companion package registers the physical Lucene index and field definitions for RazorSearch's internal index alias.
+For another provider, install core directly and replace `AddExamineSearchProvider()` with your provider's setup. Core does not register a provider automatically.
 
-## Step 3: Register your provider
+## Build and start
 
-RazorSearch owns its own internal index alias, but your host application still owns the provider setup.
+Build once after installing. Umbraco copies `appsettings-schema.Umbraco.Community.RazorSearch.json` into the app and adds its reference to `appsettings-schema.json`. Use `"$schema": "appsettings-schema.json"` in appsettings files for editor completion and validation.
 
-Make sure your host application also:
+Start the app to create the snapshot table. Sign into the backoffice as an administrator and start a global rebuild in RazorSearch. Rebuild acceptance returns promptly; document enumeration and rendering continue in the background. Wait for completion before checking the [search example](../usage/README.md).
 
-- registers the search provider you want to use
-- configures that provider for the host application
+## Updating an unreleased development database
 
-## Step 4: Start the site
+This first beta replaces the experimental snapshot schema. No upgrade from the unreleased schema is supported. For a disposable development site, create a fresh database and rebuild snapshots. Do not point the beta at an existing development database containing the old RazorSearch table without explicitly resetting that package's data first. Published Umbraco content is the source of truth for rebuilding snapshots.
 
-When the site starts, RazorSearch automatically registers its services and applies any pending migrations for its snapshot table.
+## Deployment
 
-## Step 5: Backfill existing content
+For load balancing, deploy matching package/configuration versions on every node. Start the dedicated backoffice first so migrations complete before frontend nodes serve queries. Configure its internal rendering origin as described in [indexing](../indexing/README.md).
 
-RazorSearch only creates snapshots when content is rendered through its queue.
-
-For a new installation, queue a rebuild or backfill after startup so existing published content becomes searchable.
-
-## What the package registers automatically
-
-Once installed, RazorSearch adds:
-
-- a snapshot `DbContext`
-- EF Core-backed snapshot storage
-- notification handlers for publish, unpublish, delete, move, and recycle-bin events
-- a background render queue and hosted service
-- the HTTP renderer
-- an internal dedicated RazorSearch index registration and indexing pipeline
-- management APIs and backoffice actions
-
-The package also applies its own pending EF Core migrations on application start.
-
-## First-time setup checklist
-
-After installation, the usual flow is:
-
-1. Install the NuGet package.
-2. Enable `AddSearchCore()` in the host.
-3. Register and configure your search provider for the host application.
-4. Add RazorSearch configuration if needed.
-5. Start the site and let RazorSearch create or migrate its snapshot table.
-6. Queue a snapshot backfill for existing content.
-7. Wait for the queued render jobs to finish so snapshot writes can refresh the internal RazorSearch index.
-
-## What is not done automatically
-
-RazorSearch does not:
-
-- register your provider
-- take over your published content index
-- backfill existing published content automatically on first install
-
-That distinction matters on new installs and after large rebuilds.
+After deploying changed templates, shared template content or extraction settings, manually rebuild the affected documents or the full site. An ordinary Umbraco Search index rebuild reads stored snapshots; it does not render pages again.

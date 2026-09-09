@@ -17,6 +17,9 @@ The package is provider-agnostic:
 - `src/Umbraco.Community.RazorSearch`: main package source
 - `src/Umbraco.Community.RazorSearch/Client`: Umbraco backoffice client built with Vite and TypeScript
 - `src/Umbraco.Community.RazorSearch.Demo`: local demo site referencing the package project
+- `tests/Umbraco.Community.RazorSearch.Tests`: regression tests, including real Examine and database integration
+- `build/SchemaFinalize`: build-only JSON Schema completion helper
+- `build/Validate.ps1`: shared local and CI build, test, publish and NuGet installation checks
 - `docs`: package documentation published from the root README
 - `assets`: package assets such as the NuGet icon
 - `.github/CONTRIBUTING.md`: short contributor setup notes
@@ -25,7 +28,7 @@ The package is provider-agnostic:
 ## Toolchain
 
 - .NET SDK `10`
-- Node.js `22+`
+- Node.js `24.13+` and npm `11+`
 - npm for the backoffice client
 
 ## Common Commands
@@ -42,7 +45,7 @@ dotnet build Umbraco.Community.RazorSearch.slnx
 
 ```powershell
 cd src/Umbraco.Community.RazorSearch/Client
-npm install
+npm ci
 npm run build
 ```
 
@@ -81,7 +84,7 @@ Before finishing meaningful code changes:
 - run `dotnet build Umbraco.Community.RazorSearch.slnx`
 - run the demo site for behavior that depends on rendering, indexing, migrations, or backoffice UI
 
-There is currently no separate automated test project in this repository, so build and demo verification are the main safety nets.
+Regression tests live in `tests/Umbraco.Community.RazorSearch.Tests`. Run `dotnet test Umbraco.Community.RazorSearch.slnx` and use `build/Validate.ps1` for the full local/CI build, test and package checks. Rendering, migrations and backoffice changes also require demo verification.
 
 ## Package-Specific Guardrails
 
@@ -104,7 +107,7 @@ There is currently no separate automated test project in this repository, so bui
 The GitHub Actions release workflow:
 
 - runs on version tags
-- installs Node.js `22`
+- installs Node.js `24`
 - builds the client in `src/Umbraco.Community.RazorSearch/Client`
 - packs the main project
 - pushes the package to NuGet

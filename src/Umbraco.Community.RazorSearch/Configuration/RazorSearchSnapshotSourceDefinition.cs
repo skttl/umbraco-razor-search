@@ -1,13 +1,21 @@
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+
 namespace Umbraco.Community.RazorSearch.Configuration;
 
 public sealed class RazorSearchSnapshotSourceDefinition
 {
+    /// <summary>Source kind: selector for HTML/CSS extraction, or property for an Umbraco property.</summary>
+    [RegularExpression("^(selector|property)$"), DefaultValue("selector")]
     public string Type { get; set; } = RazorSearchSnapshotSourceTypes.Selector;
 
+    /// <summary>CSS selector, required when Type is selector.</summary>
     public string? Selector { get; set; }
 
+    /// <summary>Optional attribute to extract instead of the selected element's text.</summary>
     public string? Attribute { get; set; }
 
+    /// <summary>Published property alias, required when Type is property.</summary>
     public string? Alias { get; set; }
 
     internal RazorSearchSnapshotSourceDefinition Normalize()

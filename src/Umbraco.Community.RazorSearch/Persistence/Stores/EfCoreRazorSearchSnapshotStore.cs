@@ -9,7 +9,7 @@ public sealed class EfCoreRazorSearchSnapshotStore(IEFCoreScopeProvider<RazorSea
 {
     public async Task<RazorSearchSnapshot?> GetAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        using IEfCoreScope<RazorSearchDbContext> scope = scopeProvider.CreateScope(RepositoryCacheMode.Unspecified, true);
+        using var scope = scopeProvider.CreateScope(RepositoryCacheMode.Unspecified, scopeFileSystems: false);
 
         RazorSearchSnapshot? snapshot = await scope.ExecuteWithContextAsync(async dbContext =>
             (await dbContext.RazorSearchSnapshots
@@ -29,18 +29,17 @@ public sealed class EfCoreRazorSearchSnapshotStore(IEFCoreScopeProvider<RazorSea
             return [];
         }
 
-        using IEfCoreScope<RazorSearchDbContext> scope = scopeProvider.CreateScope(RepositoryCacheMode.Unspecified, true);
+        using var scope = scopeProvider.CreateScope(RepositoryCacheMode.Unspecified, scopeFileSystems: false);
 
         IReadOnlyCollection<RazorSearchSnapshot> snapshots = await scope.ExecuteWithContextAsync(async dbContext =>
             await dbContext.RazorSearchSnapshots
                 .AsNoTracking()
                 .Where(x => normalizedIds.Contains(x.Id))
-                .OrderBy(x => x.UpdatedAtUtc)
                 .Select(x => x.ToModel())
                 .ToArrayAsync(cancellationToken));
 
         scope.Complete();
-        return snapshots;
+        return snapshots.OrderBy(x => x.UpdatedAtUtc).ToArray();
     }
 
     public Task<IReadOnlyCollection<RazorSearchSnapshot>> GetByContentKeyAsync(Guid contentKey, CancellationToken cancellationToken = default)
@@ -54,7 +53,7 @@ public sealed class EfCoreRazorSearchSnapshotStore(IEFCoreScopeProvider<RazorSea
             return [];
         }
 
-        using IEfCoreScope<RazorSearchDbContext> scope = scopeProvider.CreateScope(RepositoryCacheMode.Unspecified, true);
+        using var scope = scopeProvider.CreateScope(RepositoryCacheMode.Unspecified, scopeFileSystems: false);
 
         IReadOnlyCollection<RazorSearchSnapshot> snapshots = await scope.ExecuteWithContextAsync(async dbContext =>
             await dbContext.RazorSearchSnapshots
@@ -63,7 +62,6 @@ public sealed class EfCoreRazorSearchSnapshotStore(IEFCoreScopeProvider<RazorSea
                 .OrderBy(x => x.ContentKey)
                 .ThenBy(x => x.Route)
                 .ThenBy(x => x.Culture)
-                .ThenBy(x => x.Segment)
                 .Select(x => x.ToModel())
                 .ToArrayAsync(cancellationToken));
 
@@ -84,7 +82,7 @@ public sealed class EfCoreRazorSearchSnapshotStore(IEFCoreScopeProvider<RazorSea
             return [];
         }
 
-        using IEfCoreScope<RazorSearchDbContext> scope = scopeProvider.CreateScope(RepositoryCacheMode.Unspecified, true);
+        using var scope = scopeProvider.CreateScope(RepositoryCacheMode.Unspecified, scopeFileSystems: false);
 
         IReadOnlyCollection<RazorSearchSnapshot> snapshots = await scope.ExecuteWithContextAsync(async dbContext =>
         {
@@ -105,13 +103,12 @@ public sealed class EfCoreRazorSearchSnapshotStore(IEFCoreScopeProvider<RazorSea
             }
 
             return await query
-                .OrderByDescending(x => x.UpdatedAtUtc)
                 .Select(x => x.ToModel())
                 .ToArrayAsync(cancellationToken);
         });
 
         scope.Complete();
-        return snapshots;
+        return snapshots.OrderByDescending(x => x.UpdatedAtUtc).ToArray();
     }
 
     public async Task<RazorSearchSnapshot> UpsertAsync(RazorSearchSnapshot snapshot, CancellationToken cancellationToken = default)
@@ -122,13 +119,16 @@ public sealed class EfCoreRazorSearchSnapshotStore(IEFCoreScopeProvider<RazorSea
 
     public async Task<IReadOnlyCollection<RazorSearchSnapshot>> UpsertManyAsync(IEnumerable<RazorSearchSnapshot> snapshots, CancellationToken cancellationToken = default)
     {
-        RazorSearchSnapshot[] normalizedSnapshots = snapshots.ToArray();
+        RazorSearchSnapshot[] normalizedSnapshots = snapshots
+            .GroupBy(x => (x.ContentKey, Culture: NormalizeNullable(x.Culture)))
+            .Select(x => x.Last())
+            .ToArray();
         if (normalizedSnapshots.Length == 0)
         {
             return [];
         }
 
-        using IEfCoreScope<RazorSearchDbContext> scope = scopeProvider.CreateScope();
+        using var scope = scopeProvider.CreateScope(scopeFileSystems: false);
 
         IReadOnlyCollection<RazorSearchSnapshot> upsertedSnapshots = await scope.ExecuteWithContextAsync(async dbContext =>
         {
@@ -138,10 +138,7 @@ public sealed class EfCoreRazorSearchSnapshotStore(IEFCoreScopeProvider<RazorSea
             {
                 RazorSearchSnapshotEntity? existingEntity = await dbContext.RazorSearchSnapshots.FirstOrDefaultAsync(
                     x => x.ContentKey == snapshot.ContentKey
-                        && x.Route == snapshot.Route
-                        && x.Culture == NormalizeNullable(snapshot.Culture)
-                        && x.Segment == NormalizeNullable(snapshot.Segment)
-                        && x.Renderer == snapshot.Renderer,
+                        && x.Culture.Trim().ToLower() == NormalizeNullable(snapshot.Culture),
                     cancellationToken);
 
                 DateTimeOffset createdAtUtc = existingEntity?.CreatedAtUtc
@@ -156,7 +153,6 @@ public sealed class EfCoreRazorSearchSnapshotStore(IEFCoreScopeProvider<RazorSea
                 entity.ContentKey = snapshot.ContentKey;
                 entity.Route = snapshot.Route;
                 entity.Culture = NormalizeNullable(snapshot.Culture);
-                entity.Segment = NormalizeNullable(snapshot.Segment);
                 entity.Renderer = snapshot.Renderer;
                 entity.Snapshot = snapshot.Snapshot;
                 entity.SnapshotHtml = snapshot.SnapshotHtml;
@@ -172,6 +168,7 @@ public sealed class EfCoreRazorSearchSnapshotStore(IEFCoreScopeProvider<RazorSea
                     : snapshot.RenderStatus;
                 entity.LastRenderError = snapshot.LastRenderError;
                 entity.RenderedAtUtc = snapshot.RenderedAtUtc;
+                entity.LastAttemptAtUtc = snapshot.LastAttemptAtUtc;
                 entity.UpdatedAtUtc = snapshot.UpdatedAtUtc == default ? DateTimeOffset.UtcNow : snapshot.UpdatedAtUtc;
 
                 if (existingEntity is null)
@@ -197,7 +194,7 @@ public sealed class EfCoreRazorSearchSnapshotStore(IEFCoreScopeProvider<RazorSea
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        using IEfCoreScope<RazorSearchDbContext> scope = scopeProvider.CreateScope();
+        using var scope = scopeProvider.CreateScope(scopeFileSystems: false);
 
         bool deleted = await scope.ExecuteWithContextAsync(async dbContext =>
         {
@@ -222,7 +219,7 @@ public sealed class EfCoreRazorSearchSnapshotStore(IEFCoreScopeProvider<RazorSea
 
     public async Task<int> DeleteByContentKeyAsync(Guid contentKey, CancellationToken cancellationToken = default)
     {
-        using IEfCoreScope<RazorSearchDbContext> scope = scopeProvider.CreateScope();
+        using var scope = scopeProvider.CreateScope(scopeFileSystems: false);
 
         int deletedCount = await scope.ExecuteWithContextAsync(async dbContext =>
         {
@@ -248,7 +245,7 @@ public sealed class EfCoreRazorSearchSnapshotStore(IEFCoreScopeProvider<RazorSea
         return deletedCount;
     }
 
-    private static string NormalizeNullable(string? value) => value ?? string.Empty;
+    private static string NormalizeNullable(string? value) => (value ?? string.Empty).Trim().ToLowerInvariant();
 }
 
 internal static class RazorSearchSnapshotStoreMappings
@@ -259,7 +256,6 @@ internal static class RazorSearchSnapshotStoreMappings
         ContentKey = entity.ContentKey,
         Route = entity.Route,
         Culture = DenormalizeNullable(entity.Culture),
-        Segment = DenormalizeNullable(entity.Segment),
         Renderer = entity.Renderer,
         Snapshot = entity.Snapshot,
         SnapshotHtml = entity.SnapshotHtml,
@@ -273,6 +269,7 @@ internal static class RazorSearchSnapshotStoreMappings
         RenderStatus = entity.RenderStatus,
         LastRenderError = entity.LastRenderError,
         RenderedAtUtc = entity.RenderedAtUtc,
+        LastAttemptAtUtc = entity.LastAttemptAtUtc,
         CreatedAtUtc = entity.CreatedAtUtc,
         UpdatedAtUtc = entity.UpdatedAtUtc,
     };

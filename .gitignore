@@ -22,6 +22,8 @@ bld/
 [Ll]ogs/
 
 ## NuGet
+artifacts/
+TestResults/
 *.nupkg
 *.snupkg
 **/[Pp]ackages/*
@@ -45,3 +47,5 @@ Thumbs.db
 appsettings-schema.json
 appsettings-schema.*.json
 src/Umbraco.Community.RazorSearch/umbraco-package-schema.json
+tests/**/umbraco-package-schema.json
+src/Umbraco.Community.RazorSearch.Examine/umbraco-package-schema.json

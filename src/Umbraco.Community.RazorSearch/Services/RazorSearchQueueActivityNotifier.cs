@@ -26,8 +26,9 @@ internal sealed class RazorSearchQueueActivityNotifier : IRazorSearchQueueActivi
     public IRazorSearchQueueActivitySubscription Subscribe(CancellationToken cancellationToken = default)
     {
         Guid subscriptionId = Guid.NewGuid();
-        Channel<long> channel = Channel.CreateUnbounded<long>(new UnboundedChannelOptions
+        Channel<long> channel = Channel.CreateBounded<long>(new BoundedChannelOptions(1)
         {
+            FullMode = BoundedChannelFullMode.DropOldest,
             SingleReader = true,
             SingleWriter = false,
         });

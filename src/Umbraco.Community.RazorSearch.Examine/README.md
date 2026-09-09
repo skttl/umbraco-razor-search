@@ -1,13 +1,13 @@
-# Umbraco.Community.RazorSearch.Examine
+# RazorSearch Examine companion
 
-`Umbraco.Community.RazorSearch.Examine` is the Examine companion package for `Umbraco.Community.RazorSearch`.
+The companion creates the physical Examine index and field definitions for `Umbraco.Community.RazorSearch`. It includes core transitively and targets the matching Umbraco major.
 
-Install this package when your host uses `Umbraco.Cms.Search.Provider.Examine`.
+```powershell
+dotnet add package Umbraco.Community.RazorSearch.Examine --version 18.0.0-beta.1
+```
 
-The companion package:
+The consuming application must still call `AddSearchCore()` and `AddExamineSearchProvider()`. This package does not take over the application's published-content index.
 
-- creates the internal Lucene/Examine index used by RazorSearch
-- configures the required field definitions for RazorSearch fulltext and filter fields
-- keeps the RazorSearch package provider-agnostic
+Configuration belongs under `Umbraco:Community:RazorSearch`. Core supplies the generated appsettings-schema and registers it automatically at build, including through this transitive installation.
 
-You still need to enable `AddSearchCore()` and `AddExamineSearchProvider()` in the host application.
+See the complete [installation example](https://github.com/skttl/umbraco-razor-search/blob/main/docs/installation/README.md), [configuration](https://github.com/skttl/umbraco-razor-search/blob/main/docs/configuration/README.md), and [load-balancing guidance](https://github.com/skttl/umbraco-razor-search/blob/main/docs/indexing/README.md).

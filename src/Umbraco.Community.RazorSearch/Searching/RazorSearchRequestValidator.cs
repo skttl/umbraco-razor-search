@@ -4,6 +4,13 @@ namespace Umbraco.Community.RazorSearch.Searching;
 
 internal static class RazorSearchRequestValidator
 {
+    internal static string? ResolveCulture(string? culture, IEnumerable<string> configuredCultures)
+    {
+        if (culture is null) return null;
+        return configuredCultures.FirstOrDefault(x => string.Equals(x, culture, StringComparison.OrdinalIgnoreCase))
+            ?? throw new ArgumentException($"Culture '{culture}' is not a configured Umbraco language.", nameof(culture));
+    }
+
     public static void Validate(Models.RazorSearch search)
     {
         if (string.IsNullOrWhiteSpace(search.Text))

@@ -20,10 +20,6 @@ internal sealed class RazorSearchSnapshotEntityConfiguration : IEntityTypeConfig
             .HasMaxLength(32)
             .IsRequired();
 
-        builder.Property(x => x.Segment)
-            .HasMaxLength(64)
-            .IsRequired();
-
         builder.Property(x => x.Renderer)
             .HasMaxLength(128)
             .IsRequired();
@@ -34,8 +30,7 @@ internal sealed class RazorSearchSnapshotEntityConfiguration : IEntityTypeConfig
         builder.Property(x => x.FinalUrl)
             .HasMaxLength(2048);
 
-        builder.Property(x => x.TitleText)
-            .HasMaxLength(512);
+        // Titles are extracted from HTML and have no artificial database length limit.
 
         builder.Property(x => x.ContentHash)
             .HasMaxLength(128);
@@ -57,10 +52,7 @@ internal sealed class RazorSearchSnapshotEntityConfiguration : IEntityTypeConfig
                 x => new
                 {
                     x.ContentKey,
-                    x.Route,
                     x.Culture,
-                    x.Segment,
-                    x.Renderer,
                 })
             .IsUnique();
 

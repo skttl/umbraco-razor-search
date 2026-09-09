@@ -14,8 +14,6 @@ public sealed class RazorSearchQueueJobResponse
 
     public string? Culture { get; init; }
 
-    public string? Segment { get; init; }
-
     public DateTimeOffset EnqueuedAt { get; init; }
 
     public DateTimeOffset UpdatedAt { get; init; }

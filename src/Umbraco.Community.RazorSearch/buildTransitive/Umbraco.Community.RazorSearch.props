@@ -1,0 +1,6 @@
+<Project>
+  <Import Project="..\buildMultiTargeting\Umbraco.Community.RazorSearch.props" />
+  <ItemGroup>
+    <UmbracoJsonSchemaFiles Include="$(MSBuildThisFileDirectory)..\appsettings-schema.Umbraco.Community.RazorSearch.json" Weight="-49" />
+  </ItemGroup>
+</Project>

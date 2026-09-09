@@ -3,6 +3,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using System.Text.Json;
+using Umbraco.Cms.Core.Actions;
+using Umbraco.Cms.Core.Security;
+using Umbraco.Cms.Core.Services;
+using Umbraco.Cms.Core.Services.AuthorizationStatus;
+using Umbraco.Cms.Core.Sync;
+using Umbraco.Extensions;
 using Umbraco.Community.RazorSearch.Api;
 using Umbraco.Community.RazorSearch.Api.Models;
 using Umbraco.Community.RazorSearch.Services;
@@ -14,7 +20,10 @@ namespace Umbraco.Community.RazorSearch.Controllers;
 [Route("umbraco/management/api/v1/razor-search")]
 public sealed class RazorSearchManagementController(
     IRazorSearchManagementService managementService,
-    IServiceProvider serviceProvider) : ControllerBase
+    IServiceProvider serviceProvider,
+    IBackOfficeSecurityAccessor securityAccessor,
+    IContentPermissionService permissionService,
+    IServerRoleAccessor serverRoleAccessor) : ControllerBase
 {
     private static readonly JsonSerializerOptions QueueStatusSerializerOptions = new(JsonSerializerDefaults.Web);
 
@@ -26,12 +35,21 @@ public sealed class RazorSearchManagementController(
         [FromBody] QueueRazorSearchDocumentRequest request,
         CancellationToken cancellationToken)
     {
+        if (!IsRenderServer) return RenderServerUnavailable();
+        var user = securityAccessor.BackOfficeSecurity?.CurrentUser;
+        if (user is null || await permissionService.AuthorizeAccessAsync(user, [id], new HashSet<string> { ActionPublish.ActionLetter }) != ContentAuthorizationStatus.Success)
+            return Forbid();
+        if (request.IncludeDescendants && await permissionService.AuthorizeDescendantsAccessAsync(user, id, new HashSet<string> { ActionPublish.ActionLetter }) != ContentAuthorizationStatus.Success)
+            return Forbid();
+
         QueueRazorSearchDocumentResponse response = await managementService.QueueDocumentAsync(
             id,
             request.IncludeDescendants,
-            request.MaxDocuments,
+            user.Key,
             cancellationToken);
 
+        if (!user.IsAdmin())
+            response = response with { Status = response.Status with { Snapshots = response.Status.Snapshots.Select(snapshot => snapshot with { SnapshotHtml = null }).ToArray() } };
         return Accepted(response);
     }
 
@@ -41,8 +59,12 @@ public sealed class RazorSearchManagementController(
         [FromBody] QueueRazorSearchPublishedContentRequest request,
         CancellationToken cancellationToken)
     {
+        if (!IsRenderServer) return RenderServerUnavailable();
+        var user = securityAccessor.BackOfficeSecurity?.CurrentUser;
+        if (user?.IsAdmin() is not true) return Forbid();
+
         QueueRazorSearchPublishedContentResponse response = await managementService.QueuePublishedContentAsync(
-            request.MaxDocuments,
+            user.Key,
             cancellationToken);
 
         return Accepted(response);
@@ -52,7 +74,13 @@ public sealed class RazorSearchManagementController(
     [ProducesResponseType<RazorSearchDocumentStatusResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<RazorSearchDocumentStatusResponse>> GetDocumentStatus(Guid id, CancellationToken cancellationToken)
     {
+        if (!IsRenderServer) return RenderServerUnavailable();
+        var user = securityAccessor.BackOfficeSecurity?.CurrentUser;
+        if (user is null || await permissionService.AuthorizeAccessAsync(user, [id], new HashSet<string> { ActionBrowse.ActionLetter }) != ContentAuthorizationStatus.Success)
+            return Forbid();
         RazorSearchDocumentStatusResponse response = await managementService.GetDocumentStatusAsync(id, cancellationToken);
+        if (!user.IsAdmin())
+            response = response with { Snapshots = response.Snapshots.Select(snapshot => snapshot with { SnapshotHtml = null }).ToArray() };
         return Ok(response);
     }
 
@@ -60,6 +88,8 @@ public sealed class RazorSearchManagementController(
     [ProducesResponseType<RazorSearchQueueStatusResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<RazorSearchQueueStatusResponse>> GetQueueStatus(CancellationToken cancellationToken)
     {
+        if (!IsRenderServer) return RenderServerUnavailable();
+        if (securityAccessor.BackOfficeSecurity?.CurrentUser?.IsAdmin() is not true) return Forbid();
         RazorSearchQueueStatusResponse response = await managementService.GetQueueStatusAsync(cancellationToken);
         return Ok(response);
     }
@@ -68,6 +98,8 @@ public sealed class RazorSearchManagementController(
     [ProducesResponseType<RazorSearchQueueBatchDetailsResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<RazorSearchQueueBatchDetailsResponse>> GetQueueBatchDetails(CancellationToken cancellationToken)
     {
+        if (!IsRenderServer) return RenderServerUnavailable();
+        if (securityAccessor.BackOfficeSecurity?.CurrentUser?.IsAdmin() is not true) return Forbid();
         RazorSearchQueueBatchDetailsResponse response = await managementService.GetQueueBatchDetailsAsync(cancellationToken);
         return Ok(response);
     }
@@ -75,6 +107,9 @@ public sealed class RazorSearchManagementController(
     [HttpGet("queue/stream")]
     public async Task StreamQueueStatus(CancellationToken cancellationToken)
     {
+        if (!IsRenderServer) { Response.StatusCode = StatusCodes.Status503ServiceUnavailable; return; }
+        if (securityAccessor.BackOfficeSecurity?.CurrentUser?.IsAdmin() is not true) { Response.StatusCode = StatusCodes.Status403Forbidden; return; }
+
         IRazorSearchQueueActivityNotifier queueActivityNotifier =
             serviceProvider.GetRequiredService<IRazorSearchQueueActivityNotifier>();
 
@@ -96,6 +131,12 @@ public sealed class RazorSearchManagementController(
             await WriteQueueStatusEventAsync(cancellationToken);
         }
     }
+
+    private bool IsRenderServer => serverRoleAccessor.CurrentServerRole is ServerRole.Single or ServerRole.SchedulingPublisher;
+
+    private ObjectResult RenderServerUnavailable() => Problem(
+        statusCode: StatusCodes.Status503ServiceUnavailable,
+        title: "RazorSearch operations are available on the dedicated backoffice server.");
 
     private async Task WriteQueueStatusEventAsync(CancellationToken cancellationToken)
     {

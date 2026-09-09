@@ -1,456 +1,79 @@
 # Configuration
 
-Configure RazorSearch under the `RazorSearch` section in `appsettings.json`.
-
-In practice, most installations do not need to add anything here unless you want to change how RazorSearch extracts text, or exclude specific content types or content through a property alias.
-
-## Default values
+All settings live under `Umbraco:Community:RazorSearch`. The old root-level `RazorSearch` section is not read.
 
 ```json
 {
-  "RazorSearch": {
-    "ExcludedContentTypeAliases": [],
-    "ExcludeFromSearchPropertyAlias": null,
-    "HighlightPattern": "<mark>{0}</mark>",
-    "DefaultRenderer": "http",
-    "SnapshotExtraction": {
-      "TitleSources": [
-        { "Type": "selector", "Selector": "title" }
-      ],
-      "SummarySources": [
-        { "Type": "selector", "Selector": "meta[name='description']", "Attribute": "content" }
-      ],
-      "HeadingSources": [
-        { "Type": "selector", "Selector": "h1" },
-        { "Type": "selector", "Selector": "h2" },
-        { "Type": "selector", "Selector": "h3" },
-        { "Type": "selector", "Selector": "h4" },
-        { "Type": "selector", "Selector": "h5" },
-        { "Type": "selector", "Selector": "h6" }
-      ],
-      "BodySources": [
-        { "Type": "selector", "Selector": "body" }
-      ],
-      "RemoveSelectors": []
-    },
-    "HttpRenderer": {
-      "BaseAddress": null,
-      "Headers": {
-        "X-RazorSearch": "true"
-      },
-      "Cookies": {},
-      "Timeout": "00:00:30",
-      "AllowAutoRedirect": true
-    },
-    "RenderQueue": {
-      "Capacity": 256,
-      "DeduplicateActiveJobs": true
+  "$schema": "appsettings-schema.json",
+  "Umbraco": {
+    "Community": {
+      "RazorSearch": {
+        "ExcludedContentTypeAliases": ["folder", "search"],
+        "ExcludeFromSearchPropertyAlias": "excludeFromSearch",
+        "SnapshotExtraction": {
+          "TitleSources": [
+            { "Type": "property", "Alias": "seoTitle" },
+            { "Type": "selector", "Selector": "title" }
+          ],
+          "BodySources": [{ "Type": "selector", "Selector": "main" }],
+          "RemoveSelectors": [".skip-search"]
+        }
+      }
     }
   }
 }
 ```
 
-This is the package default object as it behaves today. You only need to add settings when you want to override this behavior.
+## Appsettings schema
 
-## When to configure something
+Core ships `appsettings-schema.Umbraco.Community.RazorSearch.json`, generated from its options types. A `buildTransitive` props file registers it with Umbraco. Building the consuming app after installation copies it into the project and updates `appsettings-schema.json`. This also works when the Examine companion brings in core transitively.
 
-Most projects can leave the `RazorSearch` section very small, or omit it entirely, as long as the host has already configured Umbraco Search.
+Use the `$schema` declaration above in each JSON settings file. Editors supporting JSON Schema can provide completion and type validation. Runtime validation still checks selectors, source definitions, URLs and renderer settings. Schema completion allows custom renderer names and other packages under `Umbraco:Community`.
 
-You typically only need to add RazorSearch-specific settings when:
+## Extraction
 
-- you want to change how snapshot extraction works
-- you want to exclude specific content types
-- you want to opt content out through a specific property alias
-- you need the built-in HTTP renderer to call a specific hostname
-- you want full control over the render token used for `SearchRenderingContext.IsActive`
-
-## Provider configuration
-
-This is not part of the `RazorSearch` section, but it is still required.
-
-Your host must configure:
-
-- `AddSearchCore()`
-- a concrete provider
-- the provider used by that host application
-
-Without that, RazorSearch cannot return results.
-
-RazorSearch always emits these fixed searchable aliases inside its internal index:
-
-- `RazorSearch_Title`
-- `RazorSearch_Heading`
-- `RazorSearch_Content`
-
-## Configuration sections
-
-### `ExcludedContentTypeAliases`
-
-Use this to exclude one or more content types from RazorSearch.
-
-What it affects:
-
-- queueing
-- snapshot generation
-- internal RazorSearch index contents
-- runtime search results
-
-Typical use cases:
-
-- folders or container nodes
-- utility document types
-- content types that should never appear in site search
-
-Example:
-
-```json
-{
-  "RazorSearch": {
-    "ExcludedContentTypeAliases": ["folderPage", "searchSettings"]
-  }
-}
-```
-
-### `ExcludeFromSearchPropertyAlias`
-
-Use this when editors should be able to opt specific content out of search through a property on the document type.
-
-RazorSearch reads the published property value and treats truthy values as excluded.
-
-Typical use cases:
-
-- a checkbox like `excludeFromSearch`
-- SEO or search settings tabs
-
-Example:
-
-```json
-{
-  "RazorSearch": {
-    "ExcludeFromSearchPropertyAlias": "excludeFromSearch"
-  }
-}
-```
-
-### `HighlightPattern`
-
-Controls how matched terms are wrapped in result summaries.
-
-Use this when:
-
-- you want markup other than `<mark>`
-- your frontend expects a specific element or class
-
-The value must contain `{0}`.
-
-Example:
-
-```json
-{
-  "RazorSearch": {
-    "HighlightPattern": "<strong class=\"search-hit\">{0}</strong>"
-  }
-}
-```
-
-### `DefaultRenderer`
-
-Controls which registered renderer RazorSearch uses when a queue request does not specify one explicitly.
-
-Most projects can leave this as `http`.
-
-Change it when:
-
-- you register a custom renderer
-- you want rebuilds and publish-triggered jobs to use that renderer by default
-
-Tip:
-
-- if you want to build your own renderer, see the custom renderer guide in [../customization/README.md](../customization/README.md)
-
-Example:
-
-```json
-{
-  "RazorSearch": {
-    "DefaultRenderer": "internal-http"
-  }
-}
-```
-
-### `SnapshotExtraction`
-
-Controls how RazorSearch builds searchable text from the rendered page and from Umbraco properties.
-
-Use this when:
-
-- you want to prioritize a property over rendered HTML
-- you want to pull text from specific HTML regions
-- you want to ignore parts of the rendered page
-
-Default behavior:
-
-- title from the rendered `<title>` tag
-- summary from `meta[name="description"]`
-- headings from rendered `h1` through `h6`
-- body from the rendered `<body>` content
-
-#### `TitleSources`
-
-Ordered source definitions for title text.
-
-RazorSearch uses the first non-empty value.
-
-#### `SummarySources`
-
-Ordered source definitions for summary text.
-
-RazorSearch uses the first non-empty value.
-
-#### `HeadingSources`
-
-Ordered source definitions for heading text.
-
-RazorSearch combines all non-empty values and removes duplicates.
-
-#### `BodySources`
-
-Ordered source definitions for body text.
-
-RazorSearch combines all non-empty values and removes duplicates.
-
-#### `RemoveSelectors`
-
-CSS selectors removed before HTML extraction runs.
-
-Useful for:
-
-- navigation
-- cookie banners
-- alerts
-- promo blocks
-- repeated UI chrome that should not affect search
-
-Tip:
-
-- if you want to use `SearchRenderingContext.IsActive` to remove or suppress markup during RazorSearch rendering, see [../usage/README.md](../usage/README.md)
-
-#### Source types
-
-| Type | Required field(s) | Meaning |
+| Setting | Default | Behavior |
 | --- | --- | --- |
-| `selector` | `Selector` | Extracts text or an attribute from matching rendered HTML |
-| `property` | `Alias` | Reads the published Umbraco property value for the current content, culture, and segment |
+| `TitleSources` | CSS `title` | First non-empty value |
+| `SummarySources` | `meta[name='description']`, attribute `content` | First non-empty value |
+| `HeadingSources` | `h1, h2, h3, h4, h5, h6` | Combine matching text |
+| `BodySources` | CSS `body` | Combine matching text |
+| `RemoveSelectors` | Empty | Remove matching elements before extraction |
 
-#### Selector sources
+A missing source array uses the default. An explicit array replaces it. An empty array disables that source group. For example, `BodySources: []` does not silently revert to `body`. Selecting `main` excludes navigation outside `main`.
 
-Selector sources read from the rendered HTML after `RemoveSelectors` has been applied.
+A `selector` source requires `Selector` and optionally `Attribute`. A `property` source requires `Alias` and reads published property values in the snapshot's culture. Source types cannot be extended. Invalid or contradictory sources and invalid CSS selectors fail validation. Script, style, noscript and template contents are excluded automatically. Inline HTML preserves word continuity; block elements separate text.
 
-Examples:
+`ExcludedContentTypeAliases` defaults to an empty list. `ExcludeFromSearchPropertyAlias` defaults to null; configure a boolean property alias to opt documents out. Rebuild after changing either option or extraction settings.
 
-```json
-{ "Type": "selector", "Selector": "main .page-title" }
-{ "Type": "selector", "Selector": "meta[property='og:title']", "Attribute": "content" }
-{ "Type": "selector", "Selector": "[data-search-summary]" }
-{ "Type": "selector", "Selector": "body" }
-```
+## HTTP renderer
 
-#### Property sources
+Settings below are relative to `Umbraco:Community:RazorSearch`.
 
-Property sources read **published** Umbraco property values from the matching content item and variant.
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `DefaultRenderer` | `http` | Registered renderer name |
+| `HttpRenderer.BaseAddress` | null | Public origin for relative routes |
+| `HttpRenderer.RenderBaseAddress` | null | Internal origin for rendering on the dedicated backoffice |
+| `HttpRenderer.Timeout` | `00:00:30` | HTTP request timeout |
+| `HttpRenderer.AllowAutoRedirect` | false | Allow at most five redirects within the original public origin |
+| `HttpRenderer.Headers` | `X-RazorSearch: true` | Additional request headers |
+| `HttpRenderer.Cookies` | Empty | Additional request cookies |
+| `RenderRequestHeaderName` | `X-RazorSearch-Render` | Authenticated render-context header |
+| `RenderRequestToken` | Generated per app instance | Shared secret for rendering across app instances |
 
-Examples:
+Only successful HTML/XHTML responses become usable snapshots. Cross-origin redirects fail. An internal rendering origin requires an explicit token. Keep it in a secret configuration provider or an environment variable such as `Umbraco__Community__RazorSearch__RenderRequestToken`.
 
-```json
-{ "Type": "property", "Alias": "seoTitle" }
-{ "Type": "property", "Alias": "seoDescription" }
-{ "Type": "property", "Alias": "mainContent" }
-```
+`RenderBaseAddress` changes the network destination while preserving the public host, path and scheme for routing. Public result URLs remain public. See [load balancing](../indexing/README.md).
 
-String property values are normalized to plain text. If a property contains HTML, RazorSearch strips tags before indexing it.
+## Queue
 
-Example:
+`RenderQueue.Capacity` defaults to 256. It limits pending rendering work; a background rebuild producer waits for capacity without holding the management request open. Publishing during an active render schedules a later generation instead of losing the update.
 
-```json
-{
-  "RazorSearch": {
-    "SnapshotExtraction": {
-      "TitleSources": [
-        { "Type": "property", "Alias": "seoTitle" },
-        { "Type": "selector", "Selector": "title" }
-      ],
-      "SummarySources": [
-        { "Type": "property", "Alias": "seoDescription" },
-        { "Type": "selector", "Selector": "meta[name='description']", "Attribute": "content" }
-      ],
-      "BodySources": [
-        { "Type": "property", "Alias": "mainContent" },
-        { "Type": "selector", "Selector": "body" }
-      ],
-      "RemoveSelectors": [".skip-search", "[data-search-ignore='true']"]
-    }
-  }
-}
-```
+`RenderQueue.MaxAttempts` defaults to 3, `RetryDelay` to `00:00:02`, and `CompletedJobRetention` to 1000. Only transient failures are retried. A failed attempt preserves the previous usable snapshot. Queued work and job history disappear on restart.
 
-### `HttpRenderer`
+## Highlighting
 
-Controls the built-in HTTP renderer.
+`HighlightPattern` defaults to `<mark>{0}</mark>` and must contain `{0}`. Extracted text is HTML-encoded before inserting the highlight markup. Configuration is trusted; do not allow site visitors to supply the pattern.
 
-You usually only need this when the default render request cannot reach the site correctly.
-
-#### `BaseAddress`
-
-Set this when your content URLs are not already absolute and routable, and the default Umbraco application URL is not the hostname you want RazorSearch to call.
-
-You typically need it when:
-
-- your content resolves to relative URLs
-- domains are not configured in Umbraco
-- the renderer must call the site through a specific hostname
-
-If `BaseAddress` is empty, RazorSearch falls back to `WebRouting:UmbracoApplicationUrl`.
-
-#### `Headers`
-
-Additional headers sent with render requests.
-
-The default header `X-RazorSearch: true` is already included.
-
-Use this when:
-
-- the target site expects internal headers
-- a reverse proxy or middleware requires a marker header
-
-#### `Cookies`
-
-Cookies sent with render requests.
-
-Use this only when the rendered page depends on a stable cookie value during snapshot generation.
-
-#### `Timeout`
-
-Maximum time allowed for a render request.
-
-Increase it when:
-
-- pages are slow to render
-- the renderer must pass through slow upstream systems
-
-#### `AllowAutoRedirect`
-
-Controls whether the HTTP renderer follows redirects.
-
-Leave this enabled in most cases.
-
-Example:
-
-```json
-{
-  "RazorSearch": {
-    "HttpRenderer": {
-      "BaseAddress": "https://www.example.com",
-      "Headers": {
-        "X-RazorSearch": "true",
-        "X-Forwarded-Host": "www.example.com"
-      },
-      "Cookies": {},
-      "Timeout": "00:00:45",
-      "AllowAutoRedirect": true
-    }
-  }
-}
-```
-
-### `RenderQueue`
-
-Controls the in-memory background queue used for snapshot generation.
-
-Most projects can keep the defaults.
-
-#### `Capacity`
-
-Maximum number of queued jobs.
-
-Use a higher value when:
-
-- large rebuilds are common
-- many publish events can happen in bursts
-
-Set `0` or less to make the queue unbounded.
-
-#### `DeduplicateActiveJobs`
-
-Prevents duplicate active jobs for the same content and culture.
-
-Leave this enabled in most cases.
-
-Disable it only when you explicitly want overlapping jobs for the same document variant.
-
-Example:
-
-```json
-{
-  "RazorSearch": {
-    "RenderQueue": {
-      "Capacity": 512,
-      "DeduplicateActiveJobs": true
-    }
-  }
-}
-```
-
-### `RenderRequestToken`
-
-Use this only when you want full control over the token value used to activate `SearchRenderingContext.IsActive` during built-in HTTP rendering.
-
-Why it matters:
-
-- the middleware can activate a RazorSearch rendering context from a header token
-- the built-in HTTP renderer always sends that header
-- if no explicit token is configured, RazorSearch falls back to a deterministic token based on the Umbraco installation id and the host application assembly
-
-In practice, you only need to set this when you want to override the fallback token with a known value.
-
-Example:
-
-```json
-{
-  "RazorSearch": {
-    "RenderRequestToken": "change-me"
-  }
-}
-```
-
-## Active settings summary
-
-| Setting | Purpose |
-| --- | --- |
-| `ExcludedContentTypeAliases` | Excludes matching content types from queueing, indexing, and runtime search |
-| `ExcludeFromSearchPropertyAlias` | Opt-out property alias checked during queueing, indexing, and runtime search |
-| `SnapshotExtraction.TitleSources` | Ordered source definitions for extracted title text |
-| `SnapshotExtraction.SummarySources` | Ordered source definitions for extracted summary text |
-| `SnapshotExtraction.HeadingSources` | Ordered source definitions for extracted heading text |
-| `SnapshotExtraction.BodySources` | Ordered source definitions for extracted body text |
-| `SnapshotExtraction.RemoveSelectors` | CSS selectors removed before HTML extraction |
-| `HighlightPattern` | Template for highlighted summary matches; must contain `{0}` |
-| `RenderRequestHeaderName` | Header name used for render-context detection |
-| `RenderRequestToken` | Token value for the render-context header |
-| `DefaultRenderer` | Default renderer name when queue requests do not specify one |
-| `HttpRenderer.BaseAddress` | Fallback base URL for relative routes |
-| `HttpRenderer.Headers` | Extra request headers sent by the built-in HTTP renderer |
-| `HttpRenderer.Cookies` | Cookies sent by the built-in HTTP renderer |
-| `HttpRenderer.Timeout` | HTTP timeout for render requests |
-| `HttpRenderer.AllowAutoRedirect` | Whether render requests may follow redirects |
-| `RenderQueue.Capacity` | Bounded queue size; `0` or less becomes unbounded |
-| `RenderQueue.DeduplicateActiveJobs` | Prevents duplicate active jobs for the same content and culture |
-
-## Fixed search fields
-
-RazorSearch always writes these searchable fields into its internal Umbraco Search index:
-
-- `RazorSearch_Title` using `TextsR1`
-- `RazorSearch_Heading` using `TextsR2`
-- `RazorSearch_Content` using `Texts`
-
-`RazorSearch_Summary` remains available from stored snapshots for result rendering, but it is not indexed as a searchable match field.
+Provider registration is separate. The consuming app must still call `AddSearchCore()` and configure its provider.

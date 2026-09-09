@@ -1,5 +1,5 @@
+using System.Net;
 using System.Net.Http.Headers;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.Configuration.Models;
 using Umbraco.Community.RazorSearch.Configuration;
@@ -12,107 +12,73 @@ internal sealed class HttpRazorSearchRenderer(
     IOptionsMonitor<RazorSearchOptions> options,
     IOptionsMonitor<WebRoutingSettings> webRoutingSettings,
     IRenderRequestTokenProvider renderRequestTokenProvider,
-    ILogger<HttpRazorSearchRenderer> logger) : IRazorSearchRenderer
+    IHttpClientFactory httpClientFactory) : IRazorSearchRenderer
 {
-    private readonly IOptionsMonitor<RazorSearchOptions> _options = options;
-    private readonly IOptionsMonitor<WebRoutingSettings> _webRoutingSettings = webRoutingSettings;
-    private readonly IRenderRequestTokenProvider _renderRequestTokenProvider = renderRequestTokenProvider;
-    private readonly ILogger<HttpRazorSearchRenderer> _logger = logger;
-
+    internal const string HttpClientName = "RazorSearch.Rendering";
     public string Name => RazorSearchRendererNames.Http;
 
-    public async Task<RazorSearchRenderResult> RenderAsync(
-        RazorSearchRenderJob job,
-        CancellationToken cancellationToken = default)
+    public async Task<RazorSearchRenderResult> RenderAsync(RazorSearchRenderJob job, CancellationToken cancellationToken = default)
     {
-        RazorSearchOptions options = _options.CurrentValue;
-        Uri requestUri = ResolveRequestUri(job, options.HttpRenderer, _webRoutingSettings.CurrentValue);
-
-        using HttpClientHandler handler = new()
+        RazorSearchOptions settings = options.CurrentValue;
+        Uri publicUri = ResolvePublicUri(job.Route, settings.HttpRenderer, webRoutingSettings.CurrentValue);
+        Uri initialPublicUri = publicUri;
+        using HttpClient client = httpClientFactory.CreateClient(HttpClientName);
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(settings.HttpRenderer.Timeout);
+        for (int redirects = 0; ; redirects++)
         {
-            AllowAutoRedirect = options.HttpRenderer.AllowAutoRedirect,
-        };
+            Uri destination = ResolveDestination(publicUri, settings.HttpRenderer);
+            using HttpRequestMessage request = new(HttpMethod.Get, destination);
+            foreach (var header in settings.HttpRenderer.Headers) request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+            request.Headers.Host = publicUri.Authority;
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
+            request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };
+            request.Headers.TryAddWithoutValidation(settings.RenderRequestHeaderName, renderRequestTokenProvider.GetToken());
+            request.Headers.TryAddWithoutValidation(Constants.PublicSchemeHeaderName, publicUri.Scheme);
+            if (settings.HttpRenderer.Cookies.Count > 0)
+                request.Headers.TryAddWithoutValidation("Cookie", string.Join("; ", settings.HttpRenderer.Cookies.Select(x => $"{x.Key}={x.Value}")));
+            using HttpResponseMessage response = await client.SendAsync(request, timeout.Token);
+            if ((int)response.StatusCode is >= 300 and < 400)
+            {
+                Uri? location = response.Headers.Location;
+                if (!settings.HttpRenderer.AllowAutoRedirect) return Failure("Rendering returned a redirect; redirects are disabled.");
+                if (redirects >= 5) return Failure("Rendering exceeded the limit of five redirects.");
+                if (location is null || !Uri.TryCreate(publicUri, location, out Uri? next)) return Failure("Rendering returned an invalid redirect.");
+                if (!SameOrigin(initialPublicUri, next)) return Failure("Rendering redirected outside the original public origin.");
+                publicUri = next;
+                continue;
+            }
+            string? mediaType = response.Content.Headers.ContentType?.MediaType;
+            if (!response.IsSuccessStatusCode) return Failure($"Rendering request returned HTTP {(int)response.StatusCode}.");
+            if (mediaType is not "text/html" and not "application/xhtml+xml") return Failure("Rendering response must have content type text/html or application/xhtml+xml.");
+            string html = await response.Content.ReadAsStringAsync(timeout.Token);
+            if (string.IsNullOrWhiteSpace(html)) return Failure("Rendering returned an empty HTML response.");
+            return new RazorSearchRenderResult
+            {
+                JobId = job.Id, Success = true, Content = html, FinalUrl = publicUri.ToString(),
+                ContentType = mediaType, StatusCode = (int)response.StatusCode, CompletedAtUtc = DateTimeOffset.UtcNow,
+            };
 
-        using HttpClient httpClient = new(handler)
-        {
-            Timeout = options.HttpRenderer.Timeout,
-        };
-
-        using HttpRequestMessage request = new(HttpMethod.Get, requestUri);
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
-
-        foreach ((string headerName, string headerValue) in options.HttpRenderer.Headers)
-        {
-            request.Headers.TryAddWithoutValidation(headerName, headerValue);
+            RazorSearchRenderResult Failure(string message) => new()
+            {
+                JobId = job.Id, Success = false, Content = string.Empty, FinalUrl = publicUri.ToString(),
+                ContentType = response.Content.Headers.ContentType?.MediaType, StatusCode = (int)response.StatusCode,
+                ErrorMessage = message, CompletedAtUtc = DateTimeOffset.UtcNow,
+            };
         }
-
-        if (string.IsNullOrWhiteSpace(options.RenderRequestHeaderName) is false)
-        {
-            request.Headers.TryAddWithoutValidation(options.RenderRequestHeaderName, _renderRequestTokenProvider.GetToken());
-        }
-        else
-        {
-            _logger.LogDebug(
-                "RazorSearch HTTP rendering for content {ContentKey} is running without the render-context header because the header name is not configured.",
-                job.ContentKey);
-        }
-
-        if (options.HttpRenderer.Cookies.Count > 0)
-        {
-            string cookieHeader = string.Join("; ", options.HttpRenderer.Cookies.Select(x => $"{x.Key}={x.Value}"));
-            request.Headers.TryAddWithoutValidation("Cookie", cookieHeader);
-        }
-
-        using HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken);
-        string content = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        return new RazorSearchRenderResult
-        {
-            JobId = job.Id,
-            Success = response.IsSuccessStatusCode,
-            Content = content,
-            FinalUrl = response.RequestMessage?.RequestUri?.ToString() ?? requestUri.ToString(),
-            ContentType = response.Content.Headers.ContentType?.MediaType,
-            StatusCode = (int)response.StatusCode,
-            ErrorMessage = response.IsSuccessStatusCode
-                ? null
-                : $"Rendering request returned HTTP {(int)response.StatusCode}.",
-            CompletedAtUtc = DateTimeOffset.UtcNow,
-        };
     }
 
-    private static Uri ResolveRequestUri(
-        RazorSearchRenderJob job,
-        RazorSearchHttpRendererOptions options,
-        WebRoutingSettings webRoutingSettings)
+    internal static Uri ResolvePublicUri(string route, RazorSearchHttpRendererOptions options, WebRoutingSettings routing)
     {
-        if (Uri.TryCreate(job.Route, UriKind.Absolute, out Uri? absoluteUri))
-        {
-            return absoluteUri;
-        }
-
-        string? baseAddressValue = string.IsNullOrWhiteSpace(options.BaseAddress)
-            ? webRoutingSettings.UmbracoApplicationUrl
-            : options.BaseAddress;
-
-        if (string.IsNullOrWhiteSpace(baseAddressValue))
-        {
-            throw new InvalidOperationException(
-                $"Cannot resolve render route '{job.Route}' for content {job.ContentKey} because no absolute route, HttpRenderer.BaseAddress, or WebRouting:UmbracoApplicationUrl was provided.");
-        }
-
-        if (Uri.TryCreate(baseAddressValue, UriKind.Absolute, out Uri? baseAddress) is false)
-        {
-            throw new InvalidOperationException(
-                $"The resolved base address '{baseAddressValue}' is not a valid absolute URI.");
-        }
-
-        if (Uri.TryCreate(baseAddress, job.Route, out Uri? resolvedUri) is false)
-        {
-            throw new InvalidOperationException(
-                $"Unable to combine base address '{baseAddressValue}' with route '{job.Route}'.");
-        }
-
-        return resolvedUri;
+        if (Uri.TryCreate(route, UriKind.Absolute, out Uri? absolute) && absolute.Scheme is "http" or "https") return absolute;
+        string? value = string.IsNullOrWhiteSpace(options.BaseAddress) ? routing.UmbracoApplicationUrl : options.BaseAddress;
+        if (!Uri.TryCreate(value, UriKind.Absolute, out Uri? baseUri) || baseUri.Scheme is not "http" and not "https"
+            || !Uri.TryCreate(baseUri, route, out Uri? resolved) || resolved.Scheme is not "http" and not "https")
+            throw new InvalidOperationException($"Cannot resolve render route '{route}'. Configure {Constants.ConfigurationSection}:HttpRenderer:BaseAddress or Umbraco:CMS:WebRouting:UmbracoApplicationUrl.");
+        return resolved;
     }
+
+    internal static Uri ResolveDestination(Uri publicUri, RazorSearchHttpRendererOptions settings) => settings.RenderBaseAddress is { Length: > 0 } address
+        ? new Uri(new Uri(address, UriKind.Absolute), publicUri.PathAndQuery) : publicUri;
+    private static bool SameOrigin(Uri left, Uri right) => right.UserInfo.Length == 0 && left.Scheme == right.Scheme && left.Host.Equals(right.Host, StringComparison.OrdinalIgnoreCase) && left.Port == right.Port;
 }

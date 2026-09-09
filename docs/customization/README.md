@@ -1,119 +1,88 @@
 # Customization
 
-The current package version is intentionally small, but there are still a few useful extension points.
+## Custom renderers
 
-## Build a custom renderer
-
-RazorSearch exposes `IRazorSearchRenderer` so you can replace or supplement the built-in HTTP renderer.
-
-### 1. Implement the renderer
+Implement `IRazorSearchRenderer` and register it through dependency injection. Renderers return HTML and attempt metadata; the queue owns persistence, extraction, retry decisions and freshness checks.
 
 ```csharp
-using System.Net.Http.Headers;
 using Umbraco.Community.RazorSearch.Models;
 using Umbraco.Community.RazorSearch.Rendering;
 
-public sealed class InternalHttpRazorSearchRenderer : IRazorSearchRenderer
+public sealed class CustomRenderer(IHttpClientFactory clients) : IRazorSearchRenderer
 {
-    public string Name => "internal-http";
+    public string Name => "custom";
 
     public async Task<RazorSearchRenderResult> RenderAsync(
         RazorSearchRenderJob job,
         CancellationToken cancellationToken = default)
     {
-        using var client = new HttpClient
-        {
-            BaseAddress = new Uri("https://internal.example.com"),
-            Timeout = TimeSpan.FromSeconds(30),
-        };
-
-        using var request = new HttpRequestMessage(HttpMethod.Get, job.Route);
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
-        request.Headers.TryAddWithoutValidation("X-RazorSearch-Render", "change-me");
-
-        using HttpResponseMessage response = await client.SendAsync(request, cancellationToken);
-        string html = await response.Content.ReadAsStringAsync(cancellationToken);
-
+        using HttpClient client = clients.CreateClient("CustomSearchRenderer");
+        using HttpResponseMessage response = await client.GetAsync(job.Route, cancellationToken);
+        string? mediaType = response.Content.Headers.ContentType?.MediaType;
+        bool success = response.IsSuccessStatusCode && mediaType == "text/html";
         return new RazorSearchRenderResult
         {
             JobId = job.Id,
-            Success = response.IsSuccessStatusCode,
-            Content = html,
-            FinalUrl = response.RequestMessage?.RequestUri?.ToString(),
-            ContentType = response.Content.Headers.ContentType?.MediaType,
+            Success = success,
+            Content = success ? await response.Content.ReadAsStringAsync(cancellationToken) : "",
+            FinalUrl = job.Route,
+            ContentType = mediaType,
             StatusCode = (int)response.StatusCode,
-            ErrorMessage = response.IsSuccessStatusCode
-                ? null
-                : $"Rendering request returned HTTP {(int)response.StatusCode}.",
+            ErrorMessage = success ? null : "Expected a successful HTML response.",
             CompletedAtUtc = DateTimeOffset.UtcNow,
         };
     }
 }
 ```
 
-### 2. Register it
+Register before building the app:
 
 ```csharp
-builder.Services.AddSingleton<IRazorSearchRenderer, InternalHttpRazorSearchRenderer>();
+builder.Services.AddHttpClient("CustomSearchRenderer")
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddSingleton<IRazorSearchRenderer, CustomRenderer>();
 ```
 
-### 3. Make it the default
+Select the renderer:
 
 ```json
 {
-  "RazorSearch": {
-    "DefaultRenderer": "internal-http"
+  "Umbraco": {
+    "Community": {
+      "RazorSearch": {
+        "DefaultRenderer": "custom"
+      }
+    }
   }
 }
 ```
 
-## Queue a specific renderer manually
+The example does not activate `SearchRenderingContext`. If a custom renderer needs that feature, use the package's `IRenderRequestTokenProvider` and configured header name. Avoid forwarding render credentials to an untrusted origin. Prefer the built-in HTTP renderer with `HttpRenderer.RenderBaseAddress` when only the destination needs changing.
 
-If you need per-request control, enqueue render work yourself:
+## Manual queueing
 
 ```csharp
 using Umbraco.Community.RazorSearch.Models;
 using Umbraco.Community.RazorSearch.Services;
 
-public sealed class RazorSearchMaintenanceService(IRazorSearchRenderQueue renderQueue)
+public sealed class Maintenance(IRazorSearchRenderQueue queue)
 {
-    public Task QueueAsync(Guid contentKey, string url, string culture, CancellationToken cancellationToken)
+    public async Task QueueAsync(Guid contentKey, string publicUrl, string? culture,
+        CancellationToken cancellationToken)
     {
-        return renderQueue.EnqueueAsync(
-            new RazorSearchRenderRequest
-            {
-                ContentKey = contentKey,
-                Route = url,
-                Culture = culture,
-                Renderer = "internal-http",
-                Force = true,
-            },
-            cancellationToken).AsTask();
+        await queue.EnqueueAsync(new RazorSearchRenderRequest
+        {
+            ContentKey = contentKey,
+            Route = publicUrl,
+            Culture = culture,
+            Renderer = "custom"
+        }, cancellationToken);
     }
 }
 ```
 
-Note that the package management endpoints do not expose renderer selection. They use the default renderer unless you enqueue jobs manually from code.
+The worker resolves the current published route before execution. The request URL cannot force an obsolete route or unpublished document into a snapshot. A different renderer replaces the same document/culture snapshot rather than adding a parallel variant. Management operations use the configured default renderer.
 
-## Customize highlighting
+## Other extension points
 
-You can change how match highlighting is rendered in summaries:
-
-```json
-{
-  "RazorSearch": {
-    "HighlightPattern": "<strong>{0}</strong>"
-  }
-}
-```
-
-The pattern must contain `{0}`.
-
-## Customization limits
-
-The following extension points do not exist:
-
-- custom source types beyond `selector` and `property`
-- source-specific transforms beyond plain-text normalization
-- built-in non-HTTP renderer variants
-- custom RazorSearch index field aliases
+Configure CSS/property extraction and trusted highlight markup through [configuration](../configuration/README.md). Custom source types, transforms, raw provider result fields, segments and index aliases are outside the public beta contract. Core remains provider-agnostic.

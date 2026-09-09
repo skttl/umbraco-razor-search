@@ -1,4 +1,5 @@
 using Umbraco.Cms.Core.Services;
+using Umbraco.Community.RazorSearch.Services;
 using Umbraco.Cms.Core.Models;
 using Umbraco.Cms.Search.Core.Models.Indexing;
 using Umbraco.Cms.Search.Core.Services.ContentIndexing;
@@ -10,6 +11,8 @@ namespace Umbraco.Community.RazorSearch.Indexing;
 internal sealed class RefreshingRazorSearchSnapshotStore(
     IRazorSearchSnapshotStore innerStore,
     IContentService contentService,
+    RazorSearchWorkCoordinator coordinator,
+    IBackgroundRazorSearchRenderQueue queue,
     IDistributedContentIndexRefresher distributedContentIndexRefresher)
     : IRazorSearchSnapshotStore
 {
@@ -50,6 +53,8 @@ internal sealed class RefreshingRazorSearchSnapshotStore(
             return false;
         }
 
+        using var lease = await coordinator.EnterAsync(snapshot.ContentKey, cancellationToken);
+        queue.Invalidate(snapshot.ContentKey, snapshot.Culture, allCultures: false);
         bool deleted = await innerStore.DeleteAsync(id, cancellationToken);
         if (deleted)
         {
@@ -61,6 +66,8 @@ internal sealed class RefreshingRazorSearchSnapshotStore(
 
     public async Task<int> DeleteByContentKeyAsync(Guid contentKey, CancellationToken cancellationToken = default)
     {
+        using var lease = await coordinator.EnterAsync(contentKey, cancellationToken);
+        queue.Invalidate(contentKey);
         int deletedCount = await innerStore.DeleteByContentKeyAsync(contentKey, cancellationToken);
         if (deletedCount > 0)
         {

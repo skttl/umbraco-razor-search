@@ -44,7 +44,7 @@ internal sealed class RazorSearchSnapshotTextSource(
         source = null;
 
         string selectorValue = definition.Selector?.Trim() ?? string.Empty;
-        if (selectorValue.Length == 0)
+        if (selectorValue.Length == 0 || !string.IsNullOrWhiteSpace(definition.Alias))
         {
             return false;
         }
@@ -68,7 +68,7 @@ internal sealed class RazorSearchSnapshotTextSource(
         source = null;
 
         string propertyAlias = definition.Alias?.Trim() ?? string.Empty;
-        if (propertyAlias.Length == 0)
+        if (propertyAlias.Length == 0 || !string.IsNullOrWhiteSpace(definition.Selector) || !string.IsNullOrWhiteSpace(definition.Attribute))
         {
             return false;
         }
@@ -88,7 +88,6 @@ internal sealed class RazorSearchSnapshotTextSource(
             : value.Trim() switch
             {
                 var x when x.Equals(RazorSearchSnapshotSourceTypes.Selector, StringComparison.OrdinalIgnoreCase) => RazorSearchSnapshotSourceTypes.Selector,
-                var x when x.Equals("css", StringComparison.OrdinalIgnoreCase) => RazorSearchSnapshotSourceTypes.Selector,
                 var x when x.Equals(RazorSearchSnapshotSourceTypes.Property, StringComparison.OrdinalIgnoreCase) => RazorSearchSnapshotSourceTypes.Property,
                 _ => string.Empty,
             };

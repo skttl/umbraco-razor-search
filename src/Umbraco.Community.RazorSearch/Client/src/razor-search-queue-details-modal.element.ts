@@ -62,15 +62,12 @@ export class RazorSearchQueueDetailsModalElement
 
       .layout,
       .stack,
-      .metric-grid,
-      .metric-button,
       .job-list,
-      .job-card,
-      .job-meta,
+      .job-meta-grid,
       .empty-state,
       .actions {
         display: grid;
-        gap: var(--uui-size-space-4);
+        gap: var(--uui-size-space-3);
         min-width: 0;
       }
 
@@ -81,7 +78,6 @@ export class RazorSearchQueueDetailsModalElement
       .summary-header,
       .summary-copy,
       .summary-meta,
-      .job-header,
       .actions {
         display: flex;
         gap: var(--uui-size-space-3);
@@ -89,19 +85,27 @@ export class RazorSearchQueueDetailsModalElement
         flex-wrap: wrap;
       }
 
-      .summary-header,
-      .job-header {
+      .summary-header {
         justify-content: space-between;
       }
 
       .summary-copy,
-      .summary-meta,
-      .job-header {
+      .summary-meta {
         min-width: 0;
       }
 
-      .summary-copy h3,
-      .job-title {
+      .summary-copy uui-badge,
+      .job-header uui-badge {
+        --uui-badge-position: static;
+        position: static;
+        flex: 0 1 auto;
+        min-width: 0;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        white-space: normal;
+      }
+
+      .summary-copy h3 {
         margin: 0;
         min-width: 0;
         overflow-wrap: anywhere;
@@ -110,81 +114,116 @@ export class RazorSearchQueueDetailsModalElement
       .summary-meta,
       .muted,
       .metric-label,
-      .job-meta p,
       .empty-copy {
         color: var(--uui-color-text-alt);
       }
 
-      .metric-grid {
-        grid-template-columns: minmax(0, 1fr);
+      .stack p {
+        margin: 0;
       }
 
-      .metric-button {
-        text-align: left;
-        align-content: start;
-        padding: var(--uui-size-space-4);
-        border: 1px solid var(--uui-color-divider);
-        border-radius: var(--uui-border-radius);
-        background: var(--uui-color-surface);
-        cursor: pointer;
-        transition:
-          border-color 120ms ease,
-          background-color 120ms ease;
+      .filter-tabs {
+        margin: calc(var(--uui-size-space-2) * -1)
+          calc(var(--uui-size-space-2) * -1) 0;
       }
 
-      .metric-button:hover,
-      .metric-button:focus-visible {
-        border-color: var(--uui-color-interactive-emphasis);
-        background: color-mix(
-          in srgb,
-          var(--uui-color-interactive-emphasis) 5%,
-          var(--uui-color-surface)
-        );
+      .filter-tab-content {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--uui-size-space-2);
       }
 
-      .metric-button.is-active {
-        border-color: var(--uui-color-interactive-emphasis);
-        background: color-mix(
-          in srgb,
-          var(--uui-color-interactive-emphasis) 10%,
-          var(--uui-color-surface)
-        );
-      }
-
-      .metric-label {
+      .filter-tab-count {
+        color: var(--uui-color-text-alt);
         font-size: 0.8rem;
       }
 
-      .metric-value {
-        font-size: 1.6rem;
-        font-weight: 700;
-        line-height: 1;
-        color: var(--uui-color-text);
-      }
-
-      .job-card,
       .empty-state {
         border: 1px solid var(--uui-color-divider);
         border-radius: var(--uui-border-radius);
         background: var(--uui-color-surface);
         padding: var(--uui-size-space-4);
+        max-width: 100%;
+        overflow: hidden;
       }
 
-      .job-meta p {
-        margin: 0;
+      .job-list {
+        gap: var(--uui-size-space-3);
+      }
+
+      .batch-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--uui-size-space-5);
+        padding: var(--uui-size-space-3) 0;
+        border-bottom: 1px solid var(--uui-color-divider);
+      }
+
+      .batch-meta-item {
+        display: grid;
+        gap: var(--uui-size-space-1);
+      }
+
+      .jobs-heading h4 {
+        margin: var(--uui-size-space-3) 0 0;
+      }
+
+      .job-card {
+        --uui-box-default-padding: var(--uui-size-space-4);
+      }
+
+      .job-header,
+      .job-heading,
+      .job-meta-item {
+        display: block;
         min-width: 0;
         overflow-wrap: anywhere;
       }
 
-      .notice {
-        padding: var(--uui-size-space-3);
-        border-radius: var(--uui-border-radius);
-        border: 1px solid color-mix(in srgb, var(--uui-color-danger) 22%, transparent);
-        background: color-mix(
-          in srgb,
-          var(--uui-color-danger-standalone) 6%,
-          var(--uui-color-surface)
-        );
+      .job-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--uui-size-space-3);
+      }
+
+      .job-heading {
+        display: grid;
+        gap: var(--uui-size-space-1);
+      }
+
+      .job-name {
+        font-weight: 700;
+      }
+
+      .job-route,
+      .job-secondary {
+        color: var(--uui-color-text-alt);
+        font-size: 0.8rem;
+        line-height: 1.35;
+      }
+
+      .job-meta-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--uui-size-space-3);
+      }
+
+      .job-meta-item {
+        display: grid;
+        gap: var(--uui-size-space-1);
+      }
+
+      .job-meta-label {
+        color: var(--uui-color-text-alt);
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+
+      .job-error {
+        color: var(--uui-color-danger);
+        margin-top: var(--uui-size-space-2);
       }
 
       .empty-state {
@@ -192,18 +231,17 @@ export class RazorSearchQueueDetailsModalElement
         text-align: center;
       }
 
+      .empty-state uui-symbol-expand-less {
+        color: var(--uui-color-text-alt);
+        font-size: 1.5rem;
+      }
+
       .actions {
         justify-content: flex-end;
       }
 
-      @media (min-width: 720px) {
-        .metric-grid {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-      }
-
       @media (min-width: 1040px) {
-        .metric-grid {
+        .job-meta-grid {
           grid-template-columns: repeat(3, minmax(0, 1fr));
         }
       }
@@ -266,8 +304,7 @@ export class RazorSearchQueueDetailsModalElement
       <umb-body-layout .headline=${headline}>
         <div class="layout">
           ${this.#renderSummary(details)}
-          ${this.#renderFilters(details)}
-          ${this.#renderJobs(visibleJobs)}
+          ${this.#renderBatchOverview(details, visibleJobs, details.jobs)}
         </div>
         <div slot="actions" class="actions">
           <uui-button
@@ -306,7 +343,11 @@ export class RazorSearchQueueDetailsModalElement
     `;
   }
 
-  #renderFilters(details: RazorSearchQueueBatchDetailsResponse) {
+  #renderBatchOverview(
+    details: RazorSearchQueueBatchDetailsResponse,
+    jobs: RazorSearchQueueJobResponse[],
+    allJobs: RazorSearchQueueJobResponse[],
+  ) {
     const metrics: Array<{
       filter: RazorSearchQueueBatchFilter;
       label: string;
@@ -328,20 +369,46 @@ export class RazorSearchQueueDetailsModalElement
       },
     ];
 
+    const renderers = [...new Set(allJobs.map((job) => job.renderer))];
+    const cultures = [...new Set(allJobs.map((job) => job.culture).filter(Boolean))];
+
     return html`
-      <div class="metric-grid">
-        ${metrics.map(
-          (metric) => html`
-            <button
-              type="button"
-              class=${`metric-button ${this._activeFilter === metric.filter ? "is-active" : ""}`}
-              @click=${() => this.#setFilter(metric.filter)}>
-              <span class="metric-label">${metric.label}</span>
-              <span class="metric-value">${metric.value}</span>
-            </button>
-          `,
-        )}
-      </div>
+      <uui-box headline="Batch overview">
+        <uui-tab-group class="filter-tabs" aria-label="Filter queue jobs">
+          ${metrics.map(
+            (metric) => html`
+              <uui-tab
+                ?active=${this._activeFilter === metric.filter}
+                @click=${() => this.#setFilter(metric.filter)}>
+                <span class="filter-tab-content">
+                  ${metric.label}
+                  <span class="filter-tab-count">${metric.value}</span>
+                </span>
+              </uui-tab>
+            `,
+          )}
+        </uui-tab-group>
+
+        <div class="batch-meta">
+          <div class="batch-meta-item">
+            <span class="job-meta-label">Renderer</span>
+            <span>${renderers.length > 0 ? renderers.join(", ") : "Unknown"}</span>
+          </div>
+          ${cultures.length > 0
+            ? html`
+                <div class="batch-meta-item">
+                  <span class="job-meta-label">Cultures</span>
+                  <span>${cultures.join(", ")}</span>
+                </div>
+              `
+            : nothing}
+        </div>
+
+        <div class="jobs-heading">
+          <h4>Jobs (${jobs.length})</h4>
+        </div>
+        ${this.#renderJobs(jobs)}
+      </uui-box>
     `;
   }
 
@@ -352,47 +419,47 @@ export class RazorSearchQueueDetailsModalElement
 
     return html`
       <div class="job-list">
-        ${jobs.map(
-          (job) => html`
-            <article class="job-card">
-              <div class="job-list">
-                <div class="job-header">
-                  <div class="stack">
-                    <h4 class="job-title">
+          ${jobs.map(
+            (job) => html`
+              <uui-box class="job-card">
+                <div slot="headline" class="job-header">
+                  <div class="job-heading">
+                    <span class="job-name">
                       ${job.documentName?.trim() || job.documentId}
-                    </h4>
-                    <span class="muted">${job.route}</span>
+                    </span>
+                    <span class="job-route">${job.route}</span>
                   </div>
                   <uui-badge color=${this.#badgeColor(job.state)}>
                     ${job.state}
                   </uui-badge>
                 </div>
 
-                <div class="job-meta">
-                  <p>
-                    Renderer: ${job.renderer}${job.culture
-                      ? ` • Culture: ${job.culture}`
-                      : ""}${job.segment ? ` • Segment: ${job.segment}` : ""}
-                  </p>
-                  <p>
-                    Enqueued: ${this.#formatDate(job.enqueuedAt) ?? "Unknown"}${job.startedAt
-                      ? ` • Started: ${this.#formatDate(job.startedAt)}`
-                      : ""}${job.completedAt
-                      ? ` • Completed: ${this.#formatDate(job.completedAt)}`
-                      : ""}
-                  </p>
-                  <p>
-                    Last update: ${this.#formatDate(job.updatedAt) ?? "Unknown"}
-                  </p>
+                <div class="job-meta-grid">
+                  <div class="job-meta-item">
+                    <span class="job-meta-label">Enqueued</span>
+                    <span>${this.#formatDate(job.enqueuedAt) ?? "Unknown"}</span>
+                  </div>
+                  <div class="job-meta-item">
+                    <span class="job-meta-label">Started / completed</span>
+                    <span>
+                      ${job.startedAt ? this.#formatDate(job.startedAt) : "Not started"}
+                      ${job.completedAt
+                        ? ` · ${this.#formatDate(job.completedAt)}`
+                        : ""}
+                    </span>
+                  </div>
+                  <div class="job-meta-item">
+                    <span class="job-meta-label">Last update</span>
+                    <span>${this.#formatDate(job.updatedAt) ?? "Unknown"}</span>
+                  </div>
                 </div>
 
                 ${job.errorMessage
-                  ? html`<div class="notice">${job.errorMessage}</div>`
+                  ? html`<div class="job-error">${job.errorMessage}</div>`
                   : nothing}
-              </div>
-            </article>
-          `,
-        )}
+              </uui-box>
+            `,
+          )}
       </div>
     `;
   }
@@ -506,7 +573,7 @@ export class RazorSearchQueueDetailsModalElement
     }
 
     return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
+      dateStyle: "short",
       timeStyle: "short",
     }).format(date);
   }

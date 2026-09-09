@@ -10,8 +10,6 @@ public sealed record RazorSearchSnapshot
 
     public string? Culture { get; init; }
 
-    public string? Segment { get; init; }
-
     public required string Renderer { get; init; }
 
     public required string Snapshot { get; init; }
@@ -35,6 +33,8 @@ public sealed record RazorSearchSnapshot
     public string RenderStatus { get; init; } = RazorSearchSnapshotStatuses.Success;
 
     public string? LastRenderError { get; init; }
+
+    public DateTimeOffset? LastAttemptAtUtc { get; init; }
 
     public DateTimeOffset? RenderedAtUtc { get; init; }
 

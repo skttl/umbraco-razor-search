@@ -1,7 +1,13 @@
 <Solution>
+  <Folder Name="/build/">
+    <Project Path="build/SchemaFinalize/SchemaFinalize.csproj" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/Umbraco.Community.RazorSearch.Demo/Umbraco.Community.RazorSearch.Demo.csproj" />
     <Project Path="src/Umbraco.Community.RazorSearch.Examine/Umbraco.Community.RazorSearch.Examine.csproj" />
     <Project Path="src/Umbraco.Community.RazorSearch/Umbraco.Community.RazorSearch.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Umbraco.Community.RazorSearch.Tests/Umbraco.Community.RazorSearch.Tests.csproj" />
   </Folder>
 </Solution>

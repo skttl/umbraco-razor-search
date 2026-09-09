@@ -3,7 +3,8 @@ namespace Umbraco.Community.RazorSearch;
 public static class Constants
 {
     public const string ExtensionName = "RazorSearch";
-    public const string ConfigurationSection = "RazorSearch";
+    public const string ConfigurationSection = "Umbraco:Community:RazorSearch";
+    internal const string PublicSchemeHeaderName = "X-RazorSearch-Public-Scheme";
     public const string RenderRequestHeaderName = "X-RazorSearch-Render";
     public const string ApiName = "RazorSearch";
     public const string TitleFieldName = "RazorSearch_Title";

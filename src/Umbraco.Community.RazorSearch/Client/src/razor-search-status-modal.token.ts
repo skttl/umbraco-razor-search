@@ -7,7 +7,7 @@ export type RazorSearchStatusModalData = {
 };
 
 export type RazorSearchStatusModalValue = {
-  action: "close";
+  action: "close" | "queue";
 };
 
 export const RAZOR_SEARCH_STATUS_MODAL_ALIAS =

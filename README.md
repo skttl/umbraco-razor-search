@@ -1,80 +1,82 @@
 # RazorSearch
 
-Search rendered Umbraco pages with Umbraco Search.
+Search rendered Umbraco pages with Umbraco Search. RazorSearch stores HTML snapshots, extracts title, headings and body text, and contributes them to a dedicated search index.
 
-RazorSearch stores rendered HTML snapshots, extracts searchable text from them, and writes that data into an internal dedicated Umbraco Search index owned by the package.
+This branch targets Umbraco 18.1.1+ within 18.x, .NET 10 and Umbraco Search Core 18.1.0+. Use `v17/main` and the 17.x package line for Umbraco 17. The first releases are beta packages. SQLite is not release-verified in this beta; known concurrency limitations are recorded in the release notes.
 
-## Requirements
+## Install with Examine
 
-RazorSearch requires **Umbraco 17**.
-
-The package is intentionally provider-agnostic:
-
-- it does not call `AddSearchCore()` for you
-- it does not register a search provider for you
-- it does not take over your published content index configuration
-
-Your host application must bootstrap Umbraco Search first.
-
-`AddSearchCore()` comes from the `Umbraco.Cms.Search` package.
-
-## Quick Start
-
-Install the package:
-
-```bash
-dotnet add package Umbraco.Community.RazorSearch
+```powershell
+dotnet add package Umbraco.Community.RazorSearch.Examine --version 18.0.0-beta.1
 ```
 
-If your host uses `Umbraco.Cms.Search.Provider.Examine`, also install the Examine companion package:
-
-```bash
-dotnet add package Umbraco.Community.RazorSearch.Examine
-```
-
-Enable Umbraco Search in your host application:
+The companion includes the core package and creates its physical Examine index. Enable Search and the provider in the consuming application's `Program.cs`:
 
 ```csharp
+using Umbraco.Cms.Search.Core.DependencyInjection;
+using Umbraco.Cms.Search.Provider.Examine.DependencyInjection;
+
 builder.CreateUmbracoBuilder()
     .AddBackOffice()
     .AddWebsite()
     .AddComposers()
-    .AddSearchCore();
+    .AddSearchCore()
+    .AddExamineSearchProvider()
+    .Build();
 ```
 
-Then make sure your host application also:
+Keep the application's normal Umbraco boot, middleware and endpoint setup. Start the site, then queue a rebuild of existing published content from the RazorSearch backoffice dashboard.
 
-1. registers the Umbraco Search provider you want to use
-2. configures that provider for the host application
-3. backfills existing content after first install so snapshots exist for older pages
+Core is provider-agnostic. It does not call `AddSearchCore()`, register a provider or configure the application's published-content index. For a different provider, install `Umbraco.Community.RazorSearch` directly and configure that provider yourself. Examine is the provider covered by the beta acceptance matrix.
 
-For Examine hosts, the companion package owns the physical Lucene index and field definitions for RazorSearch's internal index alias. Consumers still do not need to know or configure that alias directly.
+## Configuration
 
-Most projects do not need extra `RazorSearch` configuration unless they want to change extraction behavior or exclude content by content type or property alias.
+```json
+{
+  "Umbraco": {
+    "Community": {
+      "RazorSearch": {
+        "SnapshotExtraction": {
+          "BodySources": [{ "Type": "selector", "Selector": "main" }]
+        }
+      }
+    }
+  }
+}
+```
+
+Settings live under `Umbraco:Community:RazorSearch`. The NuGet package includes an appsettings-schema. The first build after installation copies it to the app and registers it in `appsettings-schema.json`, including when core is installed transitively through the companion.
+
+## Search
+
+```csharp
+using Umbraco.Community.RazorSearch;
+using Umbraco.Community.RazorSearch.Models;
+
+// Inject IRazorSearchService as searchService.
+var request = new RazorSearch("umbraco")
+    .InCulture("da-DK")
+    .Page(1, 10);
+IRazorSearchResult result = await searchService.SearchAsync(request);
+```
+
+A specified culture must match a configured Umbraco culture. The search includes that culture and invariant documents. Without a culture it searches invariant documents only. There is no implicit request-culture fallback.
+
+## Operation
+
+Rendering and indexing happen asynchronously after publication. Each document and culture has one current snapshot. A temporary rendering failure preserves the last usable snapshot. Unpublishing, deleting and excluding content remove it from search.
+
+The render queue and its history live in memory. Restarting the app loses pending work. Run a manual rebuild when necessary, including after changes to templates, shared content or extraction rules.
+
+Load balancing targets one dedicated backoffice server and multiple frontends with a shared SQL Server database and separate local Examine indexes. The backoffice owns rendering; Umbraco Search distributes index refreshes. Configure an internal render destination to avoid a stale frontend or CDN response. Multiple active backoffice servers are outside the beta scope.
 
 ## Documentation
 
-- [Documentation Index](docs/README.md)
-- [Installation](docs/installation/README.md)
-- [Configuration](docs/configuration/README.md)
-- [Usage](docs/usage/README.md)
-- [Indexing and Reindexing](docs/indexing/README.md)
-- [Troubleshooting](docs/troubleshooting/README.md)
-- [Customization](docs/customization/README.md)
-- [Migrating from FullTextSearch](docs/migrating-from-fulltextsearch/README.md)
-
-## What RazorSearch Adds
-
-- EF Core-backed snapshot persistence via Umbraco's EF Core abstraction
-- automatic database migrations for the RazorSearch snapshot table on application start
-- a background render queue
-- configurable extraction for title, summary, headings, and body content from rendered HTML and published Umbraco properties
-- an internal dedicated RazorSearch search index backed by stored snapshots
-- management endpoints and backoffice tooling for queueing rebuilds
-
-## Good To Know
-
-- Snapshot writes and deletes now trigger a RazorSearch index refresh through `Umbraco.Cms.Search.Core`.
-- If you rely on `SearchRenderingContext.IsActive` in your views, RazorSearch will automatically use a fallback render token during built-in HTTP rendering. Configure `RazorSearch:RenderRequestToken` only if you want full control over that token value.
-- `ExcludedContentTypeAliases` and `ExcludeFromSearchPropertyAlias` are enforced automatically during queueing and through index-native filters at search time.
-- Snapshot extraction is configurable through `RazorSearch:SnapshotExtraction`, including object-based CSS-selector and Umbraco-property sources plus CSS-selector-based removal.
+- [Installation](https://github.com/skttl/umbraco-razor-search/blob/main/docs/installation/README.md)
+- [Configuration](https://github.com/skttl/umbraco-razor-search/blob/main/docs/configuration/README.md)
+- [Usage](https://github.com/skttl/umbraco-razor-search/blob/main/docs/usage/README.md)
+- [Indexing and load balancing](https://github.com/skttl/umbraco-razor-search/blob/main/docs/indexing/README.md)
+- [Troubleshooting](https://github.com/skttl/umbraco-razor-search/blob/main/docs/troubleshooting/README.md)
+- [Customization](https://github.com/skttl/umbraco-razor-search/blob/main/docs/customization/README.md)
+- [Migrating from FullTextSearch](https://github.com/skttl/umbraco-razor-search/blob/main/docs/migrating-from-fulltextsearch/README.md)
+- [Beta release notes](https://github.com/skttl/umbraco-razor-search/blob/main/docs/release-notes.md)

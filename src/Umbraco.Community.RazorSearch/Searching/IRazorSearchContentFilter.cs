@@ -7,7 +7,7 @@ public interface IRazorSearchContentFilter
 {
     bool IsExcludedContentType(string? contentTypeAlias);
 
-    bool IsExcluded(IPublishedContent content, string? culture = null, string? segment = null);
+    bool IsExcluded(IPublishedContent content, string? culture = null);
 
-    bool IsExcluded(IContentBase content, string? culture = null, string? segment = null, bool published = true);
+    bool IsExcluded(IContentBase content, string? culture = null, bool published = true);
 }

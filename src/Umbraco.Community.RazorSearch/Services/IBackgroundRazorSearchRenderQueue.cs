@@ -6,6 +6,10 @@ internal interface IBackgroundRazorSearchRenderQueue
 {
     ValueTask<RazorSearchRenderJob> DequeueAsync(CancellationToken cancellationToken);
 
+    bool IsCurrent(RazorSearchRenderJob job);
+
+    void Invalidate(Guid contentKey, string? culture = null, bool allCultures = true);
+
     void MarkRunning(RazorSearchRenderJob job);
 
     void MarkCompleted(RazorSearchRenderJob job, RazorSearchRenderResult result);

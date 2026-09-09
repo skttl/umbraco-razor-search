@@ -1,114 +1,59 @@
 # Troubleshooting
 
-## Search returns no results
+## No results
 
-Check these first:
+Confirm `AddSearchCore()` and a provider are registered. Examine apps also need the RazorSearch Examine companion to create the physical index. Rebuild existing published content after installation and wait for rendering and the subsequent Search refresh.
 
-- the host actually calls `AddSearchCore()`
-- a search provider is registered
-- if the host uses Examine, `Umbraco.Community.RazorSearch.Examine` is installed
-- the search provider is able to initialize the internal RazorSearch index
-- snapshots exist for the content you expect to find
-- the relevant render jobs have finished
+Check culture explicitly. No culture searches invariant documents only. `da-DK` searches that configured culture plus invariant documents. `da` does not expand to `da-DK`. Protected and excluded documents are omitted from public results.
 
-Snapshot writes now trigger an internal RazorSearch index refresh automatically, so missing results are usually caused by missing snapshots, incomplete provider setup, or filtering.
+## Stale results
 
-## RazorSearch fields do not appear in the internal RazorSearch index
+Inspect the document snapshot and latest rendering attempt. Failed rendering preserves the last usable text. The UI's expected index content comes from snapshots; it is not proof of what the provider currently contains.
 
-First make sure snapshots exist and the related render jobs have finished.
+Allow for Examine's searcher refresh and, on multiple nodes, delivery of the distributed index update. Queue completion can precede visibility in search. Check the actual query/index on each node before diagnosing a missing update. If results remain stale, compare the stored snapshot with the provider's index and inspect the indexing/distributed-cache logs.
 
-You can verify that by:
+A template or shared-content change requires a manual snapshot rebuild. A provider index rebuild alone cannot update stored HTML. A restart loses pending in-memory jobs, so rerun interrupted rebuilds.
 
-1. queueing a rebuild for the document or subtree if needed
-2. checking the document status endpoint: `GET /umbraco/management/api/v1/razor-search/document/{id}/status`
-3. confirming the document has a successful snapshot for the culture you expect
-4. checking RazorSearch logs if the job failed or never completed
+Result links are resolved from current published content. Check the document's current route and culture/domain configuration when a link is unavailable; changing the internal rendering address does not change the public result URL.
 
-If you need to backfill content first, use the RazorSearch backoffice management view or the rebuild endpoints described in [../indexing/README.md](../indexing/README.md).
+## Rendering fails
 
-RazorSearch writes its fields through its own internal indexing pipeline, so if results are still missing after snapshots have completed, verify the index refresh has completed and then inspect provider-specific behavior.
+Verify the public URL is routable, HTML is returned with a successful status, and authentication/CDN rules do not redirect the request. Redirects are disabled by default. If enabled, they must stay within the original public origin.
 
-## Examine says the RazorSearch index could not be found
+For relative routes, configure `Umbraco:Community:RazorSearch:HttpRenderer:BaseAddress`. On load-balanced sites configure `HttpRenderer:RenderBaseAddress` to the dedicated backoffice listener, with a shared `RenderRequestToken`. The network destination must accept the public Host header. A frontend or CDN may otherwise return stale HTML.
 
-That usually means the host has `Umbraco.Cms.Search.Provider.Examine`, but not the companion package that creates the physical Lucene index for RazorSearch.
+A failing attempt does not remove an existing usable snapshot. HTTP status and error information are visible separately. Unpublication and exclusion still remove documents from search.
 
-Install `Umbraco.Community.RazorSearch.Examine`, restart the site, and rerun the rebuild.
+For HTTP errors, check the public URL, `HttpRenderer:BaseAddress`, timeout, headers, cookies, redirect settings and whether the target is reachable from the application host. If the URL is relative, the site also needs a routable public origin or a configured base address. The status endpoint and application logs contain the saved failure details.
 
-## Search results are stale after publishing
+## Documents are skipped
 
-RazorSearch queues snapshot rendering in the background, so there can still be a delay between publish and refreshed search results.
+Rebuilds skip content that is unpublished or has no routable URL for the culture being processed. Check publication state, domains and the resolved URL. A URL resolving to `#` is not renderable. Configure `HttpRenderer:BaseAddress` when the site has no usable absolute application URL.
 
-If you need deterministic freshness for validation or QA:
+## Rendering context is inactive
 
-1. publish the content
-2. wait for the RazorSearch render job to finish
-3. verify the stored snapshot status
+`SearchRenderingContext.IsActive` is enabled by the authenticated render header. The built-in renderer sends it automatically. If a custom renderer is used, verify that it uses the configured `RenderRequestHeaderName` and `RenderRequestToken`. On multiple app instances, configure the same token on the renderer and the rendering app.
 
-## `SearchRenderingContext.IsActive` is never `true`
+## Configuration does not apply
 
-This usually means the request is not carrying the expected render header and token combination.
+Use `Umbraco:Community:RazorSearch`; root-level `RazorSearch` is not read. Explicit arrays replace defaults, and `[]` disables a source group. A missing property uses defaults. Invalid selectors, sources and rendering settings fail runtime validation.
 
-The built-in HTTP renderer now sends the render-context header automatically. If you override `RazorSearch:RenderRequestToken`, make sure the middleware and renderer are using the same value.
+Build the app after package installation to copy and register the JSON schema. Add `"$schema": "appsettings-schema.json"` to the settings file. Check that the core package's `buildTransitive` assets have not been excluded by the app's PackageReference.
 
-## Render jobs fail with HTTP errors
+Check exclusions separately. `ExcludedContentTypeAliases` and `ExcludeFromSearchPropertyAlias` apply during queueing, indexing and runtime search. Confirm the content type alias and property alias match exactly, and that the opt-out property has a truthy published value for the culture being searched.
 
-Check:
+Property sources read published values only. Confirm that the property exists on the document type, has a published value in the requested culture and contains text that can be normalized for indexing.
 
-- `RazorSearch:HttpRenderer:BaseAddress`
-- `WebRouting:UmbracoApplicationUrl`
-- custom headers
-- cookies
-- timeout
-- redirects
-- whether the target URL is reachable from the application host
+## Duplicate or moved content
 
-Also inspect the saved failure state through the document status endpoint or RazorSearch logs.
+If a queue request reports duplicate routes, the same document and culture are already queued or running. Wait for the existing job, or inspect its status, instead of submitting the same request repeatedly.
 
-## Documents are skipped during rebuild
+After moving or renaming a subtree, RazorSearch removes affected snapshots and queues new rendering work. Wait for the new jobs to finish. If old content remains searchable, run a subtree rebuild and inspect the document status for the affected descendants.
 
-That usually means the content had no routable URL.
+## Management request is denied
 
-Typical causes:
+Rebuild requires publish permissions and access through the user's start nodes. Subtree operations require access to the descendants too. Global rebuilds, queue details and raw HTML require an administrator. Rendering and management run on the dedicated backoffice or a single-server app, not on frontend subscribers.
 
-- unpublished content
-- domains are not configured
-- the URL resolves to `#`
-- the renderer needs either `HttpRenderer.BaseAddress` or `WebRouting:UmbracoApplicationUrl` to turn relative routes into absolute URLs
+## Experimental database cannot start
 
-## Rebuild says a job is duplicate
-
-That is expected when `RenderQueue.DeduplicateActiveJobs` is enabled.
-
-If the same content and culture are already queued or running, RazorSearch returns the existing job instead of creating another one.
-
-## A moved subtree still seems searchable under old content
-
-Move operations delete subtree snapshots and queue forced rerendering. If search still looks wrong after that, the usual cause is that the new jobs have not finished yet.
-
-If in doubt:
-
-1. queue a subtree rebuild
-2. wait for the jobs to finish
-3. verify the snapshot status for affected content
-
-## Config-based exclusions do not seem to work
-
-`ExcludedContentTypeAliases` and `ExcludeFromSearchPropertyAlias` are enforced automatically during queueing, indexing, and runtime search.
-
-If excluded content still appears, check:
-
-- the content type alias matches exactly
-- the configured opt-out property alias exists on the content type
-- the opt-out property has a truthy published value for the relevant culture
-
-## Property-based snapshot sources are empty
-
-Property sources only read **published** values for the content item being rendered.
-
-Check:
-
-- the configured property alias exists
-- the property has a published value in the relevant culture
-- the value is actually text-like once converted to plain text
-
-If the property value depends on unpublished edits, RazorSearch will not index those edits until they are published.
+The first beta replaces the unreleased development schema. Use a fresh disposable development database and rebuild snapshots. There is no migration compatibility promise for the earlier unpublished schema.

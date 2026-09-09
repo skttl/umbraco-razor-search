@@ -1,11 +1,17 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using Umbraco.Cms.Core.Models.PublishedContent;
+using Umbraco.Cms.Core.Sync;
 using Umbraco.Cms.Core.Web;
+using Umbraco.Community.RazorSearch.Configuration;
 using Umbraco.Community.RazorSearch.Models;
 using Umbraco.Community.RazorSearch.Persistence.Models;
 using Umbraco.Community.RazorSearch.Persistence.Stores;
 using Umbraco.Community.RazorSearch.Rendering;
+using Umbraco.Community.RazorSearch.Searching;
+using Umbraco.Extensions;
 
 namespace Umbraco.Community.RazorSearch.Services;
 
@@ -14,136 +20,112 @@ internal sealed class RazorSearchRenderQueueHostedService(
     IRazorSearchRendererResolver rendererResolver,
     IServiceScopeFactory serviceScopeFactory,
     IUmbracoContextFactory umbracoContextFactory,
+    RazorSearchWorkCoordinator coordinator,
+    IRazorSearchContentFilter contentFilter,
+    IServerRoleAccessor serverRoleAccessor,
+    IOptionsMonitor<RazorSearchOptions> options,
     ILogger<RazorSearchRenderQueueHostedService> logger) : BackgroundService
 {
-    private readonly IBackgroundRazorSearchRenderQueue _queue = queue;
-    private readonly IRazorSearchRendererResolver _rendererResolver = rendererResolver;
-    private readonly IServiceScopeFactory _serviceScopeFactory = serviceScopeFactory;
-    private readonly IUmbracoContextFactory _umbracoContextFactory = umbracoContextFactory;
-    private readonly ILogger<RazorSearchRenderQueueHostedService> _logger = logger;
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (stoppingToken.IsCancellationRequested is false)
+        while (!stoppingToken.IsCancellationRequested)
         {
+            if (serverRoleAccessor.CurrentServerRole is not (ServerRole.Single or ServerRole.SchedulingPublisher))
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
+                continue;
+            }
             RazorSearchRenderJob job;
-
-            try
-            {
-                job = await _queue.DequeueAsync(stoppingToken);
-            }
+            try { job = await queue.DequeueAsync(stoppingToken); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            try { await ProcessAsync(job, stoppingToken); }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                break;
-            }
-
-            _queue.MarkRunning(job);
-
-            try
-            {
-                using IServiceScope scope = _serviceScopeFactory.CreateScope();
-                IRazorSearchSnapshotStore snapshotStore = scope.ServiceProvider.GetRequiredService<IRazorSearchSnapshotStore>();
-                IRazorSearchRenderer renderer = _rendererResolver.GetRenderer(job.Renderer);
-                RazorSearchRenderResult result = await renderer.RenderAsync(job, stoppingToken);
-
-                if (result.Success)
-                {
-                    using var contextReference = _umbracoContextFactory.EnsureUmbracoContext();
-                    RazorSearchSnapshotContent snapshotContent =
-                        RazorSearchSnapshotTextSanitizer.ExtractSnapshotContent(
-                            result.Content,
-                            job.Route,
-                            result.FinalUrl,
-                            new RazorSearchSnapshotExtractionContext(
-                                contextReference.UmbracoContext.Content?.GetById(job.ContentKey),
-                                job.Culture,
-                                job.Segment));
-
-                    RazorSearchSnapshot snapshot = new()
-                    {
-                        ContentKey = job.ContentKey,
-                        Route = job.Route,
-                        Culture = job.Culture,
-                        Segment = job.Segment,
-                        Renderer = job.Renderer,
-                        Snapshot = snapshotContent.CombinedText,
-                        SnapshotHtml = snapshotContent.SnapshotHtml,
-                        Checksum = snapshotContent.ContentHash,
-                        FinalUrl = snapshotContent.FinalUrl,
-                        TitleText = snapshotContent.TitleText,
-                        SummaryText = snapshotContent.SummaryText,
-                        HeadingText = snapshotContent.HeadingText,
-                        BodyText = snapshotContent.BodyText,
-                        ContentHash = snapshotContent.ContentHash,
-                        RenderStatus = RazorSearchSnapshotStatuses.Success,
-                        LastRenderError = null,
-                        RenderedAtUtc = result.CompletedAtUtc,
-                        UpdatedAtUtc = result.CompletedAtUtc,
-                    };
-
-                    await snapshotStore.UpsertAsync(snapshot, stoppingToken);
-                    _queue.MarkCompleted(job, result);
-
-                    _logger.LogDebug(
-                        "RazorSearch render job {JobId} for content {ContentKey} completed successfully.",
-                        job.Id,
-                        job.ContentKey);
-                }
-                else
-                {
-                    string errorMessage = result.ErrorMessage ?? "The renderer returned an unsuccessful result.";
-                    RazorSearchSnapshot? existingSnapshot = (await snapshotStore.GetByContentKeyAsync(job.ContentKey, stoppingToken))
-                        .FirstOrDefault(x =>
-                            string.Equals(x.Culture, job.Culture, StringComparison.OrdinalIgnoreCase)
-                            && string.Equals(x.Route, job.Route, StringComparison.OrdinalIgnoreCase));
-
-                    RazorSearchSnapshot failedSnapshot = new()
-                    {
-                        Id = existingSnapshot?.Id ?? Guid.Empty,
-                        ContentKey = job.ContentKey,
-                        Route = job.Route,
-                        Culture = job.Culture,
-                        Segment = job.Segment,
-                        Renderer = job.Renderer,
-                        Snapshot = existingSnapshot?.Snapshot ?? string.Empty,
-                        SnapshotHtml = existingSnapshot?.SnapshotHtml,
-                        Checksum = existingSnapshot?.Checksum,
-                        FinalUrl = existingSnapshot?.FinalUrl,
-                        TitleText = existingSnapshot?.TitleText,
-                        SummaryText = existingSnapshot?.SummaryText,
-                        HeadingText = existingSnapshot?.HeadingText,
-                        BodyText = existingSnapshot?.BodyText,
-                        ContentHash = existingSnapshot?.ContentHash,
-                        RenderStatus = RazorSearchSnapshotStatuses.Failed,
-                        LastRenderError = errorMessage,
-                        RenderedAtUtc = result.CompletedAtUtc,
-                        CreatedAtUtc = existingSnapshot?.CreatedAtUtc ?? result.CompletedAtUtc,
-                        UpdatedAtUtc = result.CompletedAtUtc,
-                    };
-
-                    await snapshotStore.UpsertAsync(failedSnapshot, stoppingToken);
-                    _queue.MarkFailed(job, errorMessage);
-                    _logger.LogWarning(
-                        "RazorSearch render job {JobId} for content {ContentKey} failed: {ErrorMessage}",
-                        job.Id,
-                        job.ContentKey,
-                        errorMessage);
-                }
-            }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-            {
-                _queue.MarkCancelled(job, "Rendering was cancelled during shutdown.");
-                break;
-            }
+            { queue.MarkCancelled(job, "Rendering was cancelled during shutdown."); break; }
             catch (Exception exception)
             {
-                _queue.MarkFailed(job, exception.Message);
-                _logger.LogError(
-                    exception,
-                    "RazorSearch render job {JobId} for content {ContentKey} failed unexpectedly.",
-                    job.Id,
-                    job.ContentKey);
+                queue.MarkFailed(job, exception.Message);
+                logger.LogError(exception, "RazorSearch job {JobId} failed while processing or storing its result.", job.Id);
             }
         }
     }
+
+    private async Task ProcessAsync(RazorSearchRenderJob originalJob, CancellationToken cancellationToken)
+    {
+        RazorSearchOptions settings = options.CurrentValue;
+        for (int attempt = 1; attempt <= settings.RenderQueue.MaxAttempts; attempt++)
+        {
+            RazorSearchRenderJob job;
+            using (var context = umbracoContextFactory.EnsureUmbracoContext())
+            {
+                IPublishedContent? content = context.UmbracoContext.Content?.GetById(originalJob.ContentKey);
+                if (!queue.IsCurrent(originalJob) || !IsEligible(content, originalJob.Culture))
+                { queue.MarkCancelled(originalJob, "Content is no longer eligible or a newer job is pending."); return; }
+                string route = content!.Url(originalJob.Culture, UrlMode.Absolute);
+                if (string.IsNullOrWhiteSpace(route) || route.StartsWith('#'))
+                { queue.MarkCancelled(originalJob, "Content has no published route."); return; }
+                job = originalJob with { Route = route, AttemptCount = attempt };
+            }
+            queue.MarkRunning(job);
+            RazorSearchRenderResult result;
+            bool transient;
+            try
+            {
+                result = await rendererResolver.GetRenderer(job.Renderer).RenderAsync(job, cancellationToken);
+                transient = result.StatusCode is 408 or 429 or >= 500 and <= 599;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception exception)
+            {
+                transient = exception is HttpRequestException or TimeoutException or OperationCanceledException;
+                result = new() { JobId = job.Id, Success = false, Content = string.Empty,
+                    ErrorMessage = exception.Message, CompletedAtUtc = DateTimeOffset.UtcNow };
+            }
+
+            using (await coordinator.EnterAsync(job.ContentKey, cancellationToken))
+            {
+                using var context = umbracoContextFactory.EnsureUmbracoContext();
+                IPublishedContent? content = context.UmbracoContext.Content?.GetById(job.ContentKey);
+                if (!queue.IsCurrent(job) || !IsEligible(content, job.Culture)
+                    || !string.Equals(content!.Url(job.Culture, UrlMode.Absolute), job.Route, StringComparison.Ordinal))
+                { queue.MarkCancelled(job, "Content changed during rendering; the result was discarded."); return; }
+                using IServiceScope scope = serviceScopeFactory.CreateScope();
+                IRazorSearchSnapshotStore store = scope.ServiceProvider.GetRequiredService<IRazorSearchSnapshotStore>();
+                RazorSearchSnapshot snapshot;
+                if (result.Success)
+                {
+                    var extracted = RazorSearchSnapshotTextSanitizer.ExtractSnapshotContent(result.Content, job.Route, result.FinalUrl,
+                        new RazorSearchSnapshotExtractionContext(content, job.Culture), settings.SnapshotExtraction);
+                    snapshot = new() { ContentKey = job.ContentKey, Culture = job.Culture, Route = job.Route, Renderer = job.Renderer,
+                        Snapshot = extracted.CombinedText, SnapshotHtml = extracted.SnapshotHtml, Checksum = extracted.ContentHash,
+                        FinalUrl = extracted.FinalUrl, TitleText = extracted.TitleText, SummaryText = extracted.SummaryText,
+                        HeadingText = extracted.HeadingText, BodyText = extracted.BodyText, ContentHash = extracted.ContentHash,
+                        RenderStatus = RazorSearchSnapshotStatuses.Success, RenderedAtUtc = result.CompletedAtUtc,
+                        LastAttemptAtUtc = result.CompletedAtUtc, UpdatedAtUtc = result.CompletedAtUtc };
+                }
+                else
+                {
+                    RazorSearchSnapshot? existing = (await store.GetByContentKeyAsync(job.ContentKey, cancellationToken))
+                        .SingleOrDefault(x => string.Equals(x.Culture ?? string.Empty, job.Culture ?? string.Empty, StringComparison.OrdinalIgnoreCase));
+                    snapshot = PreserveSnapshotOnFailure(existing, job, result);
+                }
+                await store.UpsertAsync(snapshot, cancellationToken);
+            }
+            if (result.Success) { queue.MarkCompleted(job, result); return; }
+            if (!transient || attempt == settings.RenderQueue.MaxAttempts)
+            { queue.MarkFailed(job, result.ErrorMessage ?? "Rendering failed."); return; }
+            await Task.Delay(settings.RenderQueue.RetryDelay, cancellationToken);
+        }
+    }
+
+    internal static RazorSearchSnapshot PreserveSnapshotOnFailure(RazorSearchSnapshot? existing, RazorSearchRenderJob job, RazorSearchRenderResult result)
+    {
+        existing ??= new() { ContentKey = job.ContentKey, Culture = job.Culture, Route = job.Route,
+            Renderer = job.Renderer, Snapshot = string.Empty, RenderStatus = RazorSearchSnapshotStatuses.Failed };
+        return existing with { LastRenderError = result.ErrorMessage ?? "The renderer returned an unsuccessful result.",
+            LastAttemptAtUtc = result.CompletedAtUtc, UpdatedAtUtc = result.CompletedAtUtc };
+    }
+
+    private bool IsEligible(IPublishedContent? content, string? culture) => content is not null
+        && RazorSearchPublishedCultures.Get(content).Contains(culture, StringComparer.OrdinalIgnoreCase)
+        && !contentFilter.IsExcluded(content, culture);
 }

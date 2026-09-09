@@ -206,7 +206,6 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
       padding: var(--uui-size-space-3);
       border-radius: var(--uui-border-radius);
       background: var(--uui-color-surface-alt);
-      border-left: 4px solid var(--uui-color-divider-emphasis);
     }
 
     .hint-list {
@@ -240,6 +239,7 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
   };
   #queueStatusStream?: RazorSearchQueueStatusStreamHandle;
   #queueStatusReconnectHandle?: number;
+  #documentLookupHandle?: number;
 
   declare _documentId: string;
   declare _documentLookupMessage: string | undefined;
@@ -275,6 +275,7 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
   }
 
   override disconnectedCallback() {
+    this.#clearDocumentLookupHandle();
     this.#stopQueueStatusStream();
     super.disconnectedCallback();
   }
@@ -285,6 +286,15 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
         <section class="grid grid--wide">
           <uui-box headline="Live queue status">
             ${this.#renderQueueStatus()}
+          ${this._queueStatus?.rebuildOperations.slice(0, 1).map((operation) => html`
+            <div class="notice">
+              <strong>Rebuild discovery: ${operation.state}</strong>
+              <p>${operation.discoveredDocumentCount} documents discovered,
+                ${operation.queuedRouteCount} routes queued,
+                ${operation.skippedDocumentCount} documents skipped.</p>
+              ${operation.errorMessage ? html`<p>${operation.errorMessage}</p>` : nothing}
+            </div>
+          `)}
           </uui-box>
 
           <uui-box headline="What you can do here">
@@ -329,7 +339,7 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
             </div>
           </uui-box>
 
-          <uui-box headline="Single document">
+          <uui-box headline="Inspect and queue document">
             <div class="stack">
               <div class="field-grid">
                 <span class="field-label">Document</span>
@@ -339,29 +349,12 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
                   @change=${this.#onDocumentSelectionChange}>
                 </umb-input-document>
               </div>
-              <div class="actions">
-                <uui-button
-                  look="outline"
-                  label="Load status"
-                  ?disabled=${this._documentLookupState === "loading" || !this.#hasDocumentId()}
-                  @click=${this.#lookupDocumentStatus}>
-                  Load status
-                </uui-button>
-                <uui-button
-                  color="positive"
-                  look="primary"
-                  label="Queue document"
-                  ?disabled=${this._queueState === "loading" || !this.#hasDocumentId()}
-                  @click=${this.#queueDocument}>
-                  Queue document
-                </uui-button>
-              </div>
               ${this._documentLookupMessage
                 ? html`<div class="notice">${this._documentLookupMessage}</div>`
                 : html`
                     <p class="muted">
-                      Pick a document to inspect the current RazorSearch job
-                      state or queue it manually.
+                      Pick a document to inspect its current RazorSearch job
+                      state and queue it from the status dialog.
                     </p>
                   `}
             </div>
@@ -500,8 +493,8 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
     `;
   }
 
-  async #lookupDocumentStatus() {
-    if (!this.#ensureDocumentId()) {
+  async #lookupDocumentStatus(documentId = this._documentId) {
+    if (!documentId.trim()) {
       return;
     }
 
@@ -509,16 +502,22 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
     this._documentLookupMessage = undefined;
     try {
       const status = await this.#managementClient.getDocumentStatus(
-        this._documentId.trim(),
+        documentId.trim(),
       );
 
       if (status) {
-        await umbOpenModal(this, RAZOR_SEARCH_STATUS_MODAL, {
+        const modalValue = await umbOpenModal(this, RAZOR_SEARCH_STATUS_MODAL, {
           data: {
-            headline: `RazorSearch status${status.documentName ? `: ${status.documentName}` : ""}`,
+            headline: status.documentName?.trim() || "RazorSearch status",
             status,
           },
         }).catch(() => undefined);
+
+        this.#resetDocumentSelection();
+
+        if (modalValue?.action === "queue") {
+          await this.#queueDocument(documentId);
+        }
         return;
       }
 
@@ -529,8 +528,8 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
     }
   }
 
-  async #queueDocument() {
-    if (!this.#ensureDocumentId()) {
+  async #queueDocument(documentId = this._documentId) {
+    if (!documentId.trim()) {
       return;
     }
 
@@ -547,7 +546,7 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
     this._queueState = "loading";
     try {
       const response = await this.#managementClient.queueDocument(
-        this._documentId.trim(),
+        documentId.trim(),
         modalValue.action === "descendants",
       );
 
@@ -671,22 +670,40 @@ export class RazorSearchManagementWorkspaceViewElement extends UmbLitElement {
   }
 
   #onDocumentSelectionChange(event: Event) {
-    const target = event.target as (EventTarget & { selection?: string[] }) | null;
-    this._documentId = target?.selection?.[0] ?? "";
+    const target = event.target as
+      | (EventTarget & { selection?: string[]; value?: string })
+      | null;
+    this._documentId = target?.value?.trim() || target?.selection?.[0] || "";
     this._documentLookupMessage = undefined;
+
+    this.#clearDocumentLookupHandle();
+
+    if (this.#hasDocumentId()) {
+      const documentId = this._documentId;
+      this.#documentLookupHandle = window.setTimeout(() => {
+        this.#documentLookupHandle = undefined;
+        void this.#lookupDocumentStatus(documentId);
+      }, 200);
+    }
+  }
+
+  #resetDocumentSelection() {
+    this.#clearDocumentLookupHandle();
+    this._documentId = "";
+    this._documentLookupMessage = undefined;
+  }
+
+  #clearDocumentLookupHandle() {
+    if (this.#documentLookupHandle === undefined) {
+      return;
+    }
+
+    window.clearTimeout(this.#documentLookupHandle);
+    this.#documentLookupHandle = undefined;
   }
 
   #hasDocumentId() {
     return !!this._documentId.trim();
-  }
-
-  #ensureDocumentId(): boolean {
-    if (this.#hasDocumentId()) {
-      return true;
-    }
-
-    this.#notify("warning", "Pick a document before running this action.");
-    return false;
   }
 
   #notify(color: string, message: string) {

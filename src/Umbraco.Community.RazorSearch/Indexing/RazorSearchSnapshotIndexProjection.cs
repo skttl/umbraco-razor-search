@@ -4,7 +4,6 @@ namespace Umbraco.Community.RazorSearch.Indexing;
 
 internal sealed record RazorSearchIndexedVariant(
     string? Culture,
-    string? Segment,
     string[] Titles,
     string[] Summaries,
     string[] Headings,
@@ -18,10 +17,9 @@ internal static class RazorSearchSnapshotIndexProjection
         => snapshots
             .Where(x => string.Equals(x.RenderStatus, RazorSearchSnapshotStatuses.Success, StringComparison.OrdinalIgnoreCase))
             .Where(x => ShouldIncludeCulture(x.Culture, requestedCultures))
-            .GroupBy(x => (NormalizeVariant(x.Culture), NormalizeVariant(x.Segment)))
+            .GroupBy(x => NormalizeVariant(x.Culture), StringComparer.OrdinalIgnoreCase)
             .Select(snapshotGroup => new RazorSearchIndexedVariant(
-                DenormalizeVariant(snapshotGroup.Key.Item1),
-                DenormalizeVariant(snapshotGroup.Key.Item2),
+                DenormalizeVariant(snapshotGroup.Key),
                 CollectDistinct(snapshotGroup.Select(x => x.TitleText)),
                 CollectDistinct(snapshotGroup.Select(x => x.SummaryText)),
                 CollectDistinct(snapshotGroup.Select(x => x.HeadingText)),

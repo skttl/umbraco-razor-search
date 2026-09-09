@@ -10,8 +10,6 @@ internal sealed class RazorSearchSnapshotEntity
 
     public string Culture { get; set; } = string.Empty;
 
-    public string Segment { get; set; } = string.Empty;
-
     public string Renderer { get; set; } = string.Empty;
 
     public string Snapshot { get; set; } = string.Empty;
@@ -35,6 +33,8 @@ internal sealed class RazorSearchSnapshotEntity
     public string RenderStatus { get; set; } = RazorSearchSnapshotStatuses.Success;
 
     public string? LastRenderError { get; set; }
+
+    public DateTimeOffset? LastAttemptAtUtc { get; set; }
 
     public DateTimeOffset? RenderedAtUtc { get; set; }
 

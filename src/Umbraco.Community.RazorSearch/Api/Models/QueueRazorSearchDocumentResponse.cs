@@ -1,7 +1,9 @@
 namespace Umbraco.Community.RazorSearch.Api.Models;
 
-public sealed class QueueRazorSearchDocumentResponse
+public sealed record QueueRazorSearchDocumentResponse
 {
+    public Guid OperationId { get; init; }
+
     public Guid DocumentId { get; init; }
 
     public string Scope { get; init; } = "document";
@@ -9,8 +11,6 @@ public sealed class QueueRazorSearchDocumentResponse
     public bool IncludeDescendants { get; init; }
 
     public string State { get; init; } = "queued";
-
-    public int MaxDocumentCount { get; init; }
 
     public int DiscoveredDocumentCount { get; init; }
 
@@ -21,8 +21,6 @@ public sealed class QueueRazorSearchDocumentResponse
     public int DuplicateRouteCount { get; init; }
 
     public int SkippedDocumentCount { get; init; }
-
-    public bool WasTruncated { get; init; }
 
     public DateTimeOffset QueuedAt { get; init; }
 

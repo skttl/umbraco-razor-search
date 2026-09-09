@@ -1,6 +1,6 @@
 namespace Umbraco.Community.RazorSearch.Api.Models;
 
-public sealed class RazorSearchDocumentSnapshotResponse
+public sealed record RazorSearchDocumentSnapshotResponse
 {
     public string Route { get; init; } = string.Empty;
 
@@ -9,8 +9,6 @@ public sealed class RazorSearchDocumentSnapshotResponse
     public string Renderer { get; init; } = string.Empty;
 
     public string? Culture { get; init; }
-
-    public string? Segment { get; init; }
 
     public string State { get; init; } = "unknown";
 
@@ -27,6 +25,8 @@ public sealed class RazorSearchDocumentSnapshotResponse
     public string? BodyText { get; init; }
 
     public string? ErrorMessage { get; init; }
+
+    public DateTimeOffset? LastAttemptAt { get; init; }
 
     public DateTimeOffset? RenderedAt { get; init; }
 

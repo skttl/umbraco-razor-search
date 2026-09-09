@@ -16,8 +16,6 @@ public sealed record RazorSearchRenderJobStatus
 
     public string? Culture { get; init; }
 
-    public string? Segment { get; init; }
-
     public required DateTimeOffset EnqueuedAtUtc { get; init; }
 
     public required DateTimeOffset UpdatedAtUtc { get; init; }

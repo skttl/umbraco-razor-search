@@ -30,6 +30,7 @@ internal sealed class RazorSearchDbContextModelSnapshot : ModelSnapshot
             entity.Property<string?>("HeadingText");
             entity.Property<string?>("LastRenderError");
             entity.Property<DateTimeOffset?>("RenderedAtUtc");
+            entity.Property<DateTimeOffset?>("LastAttemptAtUtc");
             entity.Property<string>("RenderStatus")
                 .IsRequired()
                 .HasMaxLength(32);
@@ -40,15 +41,11 @@ internal sealed class RazorSearchDbContextModelSnapshot : ModelSnapshot
             entity.Property<string>("Route")
                 .IsRequired()
                 .HasMaxLength(2048);
-            entity.Property<string>("Segment")
-                .IsRequired()
-                .HasMaxLength(64);
             entity.Property<string>("Snapshot")
                 .IsRequired();
             entity.Property<string?>("SnapshotHtml");
             entity.Property<string?>("SummaryText");
-            entity.Property<string?>("TitleText")
-                .HasMaxLength(512);
+            entity.Property<string?>("TitleText");
             entity.Property<DateTimeOffset>("UpdatedAtUtc");
 
             entity.HasKey("Id");
@@ -59,7 +56,7 @@ internal sealed class RazorSearchDbContextModelSnapshot : ModelSnapshot
 
             entity.HasIndex("RenderStatus");
 
-            entity.HasIndex("ContentKey", "Route", "Culture", "Segment", "Renderer")
+            entity.HasIndex("ContentKey", "Culture")
                 .IsUnique();
 
             entity.ToTable("umbracoRazorSearchSnapshot");

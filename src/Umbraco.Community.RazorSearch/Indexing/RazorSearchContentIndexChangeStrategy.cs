@@ -45,21 +45,25 @@ internal sealed class RazorSearchContentIndexChangeStrategy(
             return;
         }
 
-        foreach (ContentChange change in changes.Where(x => x.ObjectType == UmbracoObjectTypes.Document))
+        foreach (ContentChange change in changes.Where(x => x.ObjectType == UmbracoObjectTypes.Document && x.ContentState == ContentState.Published))
         {
             IContent? content = change.ChangeImpact is ChangeImpact.Remove
                 ? null
                 : services.ContentService.GetById(change.Id);
 
             if (
-                change.ContentState is not ContentState.Published
-                || change.ChangeImpact is ChangeImpact.Remove
+                change.ChangeImpact is ChangeImpact.Remove
                 || content is null
                 || content.Trashed
                 || content.Published is false
             )
             {
                 await DeleteAsync(documentIndexes, [change.Id]);
+                IContent? removedContent = services.ContentService.GetById(change.Id);
+                if (removedContent is not null)
+                {
+                    await ReindexDescendantsAsync(documentIndexes, removedContent, services, cancellationToken);
+                }
                 continue;
             }
 
@@ -192,7 +196,13 @@ internal sealed class RazorSearchContentIndexChangeStrategy(
             .ProjectSuccessfulVariants(snapshots, requestedCultures)
             .Where(variant => variations.Any(x =>
                 string.Equals(x.Culture, variant.Culture, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(x.Segment, variant.Segment, StringComparison.OrdinalIgnoreCase)))
+                && string.Equals(x.Segment, null, StringComparison.OrdinalIgnoreCase)))
+            // Providers associate fields with variations by exact culture equality. Persistence
+            // normalizes identity casing, so restore the published culture's canonical spelling.
+            .Select(variant => variant with
+            {
+                Culture = variations.First(x => string.Equals(x.Culture, variant.Culture, StringComparison.OrdinalIgnoreCase)).Culture,
+            })
             .ToArray();
 
         if (indexedVariants.Length == 0)
@@ -209,19 +219,19 @@ internal sealed class RazorSearchContentIndexChangeStrategy(
                 fields,
                 Constants.TitleFieldName,
                 variant.Culture,
-                variant.Segment,
+                null,
                 textsR1: variant.Titles);
             AppendIndexField(
                 fields,
                 Constants.HeadingFieldName,
                 variant.Culture,
-                variant.Segment,
+                null,
                 textsR2: variant.Headings);
             AppendIndexField(
                 fields,
                 Constants.ContentFieldName,
                 variant.Culture,
-                variant.Segment,
+                null,
                 texts: variant.Bodies);
 
             fields.Add(
@@ -229,16 +239,16 @@ internal sealed class RazorSearchContentIndexChangeStrategy(
                     Constants.InternalIndex.ContentTypeAliasFieldName,
                     new IndexValue { Keywords = [content.ContentType.Alias] },
                     variant.Culture,
-                    variant.Segment));
+                    null));
 
-            if (services.ContentFilter.IsExcluded(content, variant.Culture, variant.Segment, published: true))
+            if (services.ContentFilter.IsExcluded(content, variant.Culture, published: true))
             {
                 fields.Add(
                     new IndexField(
                         Constants.InternalIndex.ExcludedFlagFieldName,
                         new IndexValue { Integers = [1] },
                         variant.Culture,
-                        variant.Segment));
+                        null));
             }
         }
 
@@ -324,17 +334,7 @@ internal sealed class RazorSearchContentIndexChangeStrategy(
             }
         }
 
-        if (content.Properties.Any(x => x.PropertyType.VariesBySegment()) is false)
-        {
-            return cultures.Select(x => new Variation(x, null)).ToArray();
-        }
-
-        return cultures
-            .SelectMany(culture => content.Properties
-                .SelectMany(property => property.Values.Where(value => value.Culture.InvariantEquals(culture)))
-                .DistinctBy(value => value.Segment)
-                .Select(value => new Variation(culture, value.Segment)))
-            .ToArray();
+        return cultures.Select(x => new Variation(x, null)).ToArray();
     }
 
     private static IEnumerable<int> GetAncestorIds(IContent content)

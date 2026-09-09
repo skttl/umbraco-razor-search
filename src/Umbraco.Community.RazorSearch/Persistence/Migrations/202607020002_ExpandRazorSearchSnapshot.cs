@@ -56,7 +56,6 @@ public sealed class ExpandRazorSearchSnapshot : Migration
         migrationBuilder.AddColumn<string>(
             name: "TitleText",
             table: "umbracoRazorSearchSnapshot",
-            maxLength: 512,
             nullable: true);
 
         migrationBuilder.CreateIndex(

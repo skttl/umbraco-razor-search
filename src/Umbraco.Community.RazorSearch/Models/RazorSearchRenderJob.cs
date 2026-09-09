@@ -12,8 +12,6 @@ public sealed record RazorSearchRenderJob
 
     public string? Culture { get; init; }
 
-    public string? Segment { get; init; }
-
     public DateTimeOffset EnqueuedAtUtc { get; init; }
 
     public int AttemptCount { get; init; } = 1;

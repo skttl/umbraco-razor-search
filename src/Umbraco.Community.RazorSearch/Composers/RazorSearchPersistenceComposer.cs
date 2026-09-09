@@ -16,7 +16,7 @@ public sealed class RazorSearchPersistenceComposer : IComposer
     public void Compose(IUmbracoBuilder builder)
     {
         builder.Services.AddUmbracoDbContext<RazorSearchDbContext>((serviceProvider, optionsBuilder, _, _) =>
-            optionsBuilder.UseUmbracoDatabaseProvider(serviceProvider));
+            optionsBuilder.UseUmbracoDatabaseProvider(serviceProvider), shareUmbracoConnection: true);
 
         builder.Services.TryAddScoped<IRazorSearchSnapshotStore, EfCoreRazorSearchSnapshotStore>();
         builder.Services.TryAddEnumerable(

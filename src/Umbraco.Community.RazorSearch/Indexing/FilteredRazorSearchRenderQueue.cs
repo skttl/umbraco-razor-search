@@ -21,7 +21,7 @@ internal sealed class FilteredRazorSearchRenderQueue(
     {
         using var contextReference = umbracoContextFactory.EnsureUmbracoContext();
         if (contextReference.UmbracoContext.Content?.GetById(request.ContentKey) is { } publishedContent
-            && contentFilter.IsExcluded(publishedContent, request.Culture, request.Segment))
+            && contentFilter.IsExcluded(publishedContent, request.Culture))
         {
             DateTimeOffset now = DateTimeOffset.UtcNow;
             string renderer = string.IsNullOrWhiteSpace(request.Renderer)
@@ -42,7 +42,6 @@ internal sealed class FilteredRazorSearchRenderQueue(
                     ContentKey = request.ContentKey,
                     Route = request.Route,
                     Culture = request.Culture,
-                    Segment = request.Segment,
                     Renderer = renderer,
                     EnqueuedAtUtc = now,
                 },
@@ -53,7 +52,6 @@ internal sealed class FilteredRazorSearchRenderQueue(
                     ContentKey = request.ContentKey,
                     Route = request.Route,
                     Culture = request.Culture,
-                    Segment = request.Segment,
                     Renderer = renderer,
                     State = RazorSearchRenderJobState.Cancelled,
                     EnqueuedAtUtc = now,

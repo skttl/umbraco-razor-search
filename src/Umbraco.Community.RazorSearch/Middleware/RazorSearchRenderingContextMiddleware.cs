@@ -25,7 +25,18 @@ internal sealed class RazorSearchRenderingContextMiddleware(
             && StringValues.Equals(tokenValue, configuredToken))
         {
             using IDisposable _ = SearchRenderingContext.Activate();
-            await _next(httpContext);
+            string originalScheme = httpContext.Request.Scheme;
+            string? publicScheme = httpContext.Request.Headers[Constants.PublicSchemeHeaderName];
+            if (publicScheme is "http" or "https") httpContext.Request.Scheme = publicScheme;
+            // Render responses must not populate a CDN or application response cache.
+            httpContext.Response.Headers.CacheControl = "no-store, no-cache";
+            httpContext.Response.OnStarting(() =>
+            {
+                httpContext.Response.Headers.CacheControl = "no-store, no-cache";
+                return Task.CompletedTask;
+            });
+            try { await _next(httpContext); }
+            finally { httpContext.Request.Scheme = originalScheme; }
             return;
         }
 

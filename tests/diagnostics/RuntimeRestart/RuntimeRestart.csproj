@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <UmbracoVersion Condition="'$(UmbracoVersion)' == ''">18.1.1</UmbracoVersion>
+    <RazorSearchVersion Condition="'$(RazorSearchVersion)' == ''">18.0.0-beta.1</RazorSearchVersion>
+  </PropertyGroup>
+  <ItemGroup><PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.12" />
+    <PackageReference Include="Umbraco.Cms" Version="$(UmbracoVersion)" />
+    <PackageReference Include="Umbraco.Community.RazorSearch.Examine" Version="$(RazorSearchVersion)" />
+  </ItemGroup>
+</Project>
+
+

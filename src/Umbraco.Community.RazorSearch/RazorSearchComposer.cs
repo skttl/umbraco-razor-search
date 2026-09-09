@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.Composing;
 using Umbraco.Cms.Core.DependencyInjection;
 using Umbraco.Cms.Web.Common.ApplicationBuilder;
@@ -20,8 +21,14 @@ public sealed class RazorSearchComposer : IComposer
 {
     public void Compose(IUmbracoBuilder builder)
     {
-        builder.Services.Configure<RazorSearchOptions>(builder.Config.GetSection(Constants.ConfigurationSection));
+        builder.Services.AddSingleton<IConfigureOptions<RazorSearchOptions>, ConfigureRazorSearchOptions>();
+        builder.Services.AddSingleton<IOptionsChangeTokenSource<RazorSearchOptions>>(
+            new ConfigurationChangeTokenSource<RazorSearchOptions>(builder.Config.GetSection(Constants.ConfigurationSection)));
+        builder.Services.AddSingleton<IValidateOptions<RazorSearchOptions>, RazorSearchOptionsValidator>();
+        builder.Services.AddOptions<RazorSearchOptions>().ValidateOnStart();
         builder.Services.TryAddSingleton<IRazorSearchContentFilter, RazorSearchContentFilter>();
+        builder.Services.AddHttpClient(HttpRazorSearchRenderer.HttpClientName, client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false });
 
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IRazorSearchRenderer, HttpRazorSearchRenderer>());
         builder.Services.TryAddSingleton<IRazorSearchRendererResolver, RazorSearchRendererResolver>();
