@@ -1,4 +1,9 @@
-param([string] $ReleaseVersion)
+param(
+    [string] $ReleaseVersion,
+    [switch] $SkipTests,
+    [switch] $SkipDemoPublish,
+    [switch] $SkipPackageSchemaTest
+)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -32,16 +37,32 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Client build failed.' }
     } finally { Pop-Location }
 
-    dotnet build Umbraco.Community.RazorSearch.slnx -c Release -p:Version=$version
-    if ($LASTEXITCODE -ne 0) { throw 'Solution build failed.' }
-    dotnet test Umbraco.Community.RazorSearch.slnx -c Release --no-build --logger trx
-    if ($LASTEXITCODE -ne 0) { throw 'Regression tests failed.' }
-    dotnet publish src/Umbraco.Community.RazorSearch.Demo/Umbraco.Community.RazorSearch.Demo.csproj -c Release --no-build -p:Version=$version -o artifacts/demo
-    if ($LASTEXITCODE -ne 0) { throw 'Demo publish failed.' }
+    $buildTarget = if (-not $SkipDemoPublish) {
+        'Umbraco.Community.RazorSearch.slnx'
+    } elseif (-not $SkipTests) {
+        'tests/Umbraco.Community.RazorSearch.Tests/Umbraco.Community.RazorSearch.Tests.csproj'
+    } else {
+        'src/Umbraco.Community.RazorSearch.Examine/Umbraco.Community.RazorSearch.Examine.csproj'
+    }
+    dotnet build $buildTarget -c Release -p:Version=$version
+    if ($LASTEXITCODE -ne 0) { throw "Build failed for $buildTarget." }
+
+    if (-not $SkipTests) {
+        dotnet test tests/Umbraco.Community.RazorSearch.Tests/Umbraco.Community.RazorSearch.Tests.csproj -c Release --no-build --no-restore --logger trx
+        if ($LASTEXITCODE -ne 0) { throw 'Regression tests failed.' }
+    }
+
+    if (-not $SkipDemoPublish) {
+        dotnet publish src/Umbraco.Community.RazorSearch.Demo/Umbraco.Community.RazorSearch.Demo.csproj -c Release --no-build --no-restore -p:Version=$version -o artifacts/demo
+        if ($LASTEXITCODE -ne 0) { throw 'Demo publish failed.' }
+    }
+
     foreach ($package in @('Umbraco.Community.RazorSearch', 'Umbraco.Community.RazorSearch.Examine')) {
-        dotnet pack "src/$package/$package.csproj" -c Release --no-build -p:Version=$version -p:PackageVersion=$version -o artifacts/packages
+        dotnet pack "src/$package/$package.csproj" -c Release --no-build --no-restore -p:Version=$version -p:PackageVersion=$version -o artifacts/packages
         if ($LASTEXITCODE -ne 0) { throw "Pack failed for $package." }
     }
     & "$PSScriptRoot/VerifyPackages.ps1" -Version $version
-    & "$PSScriptRoot/Test-PackageSchema.ps1" -PackageDirectory artifacts/packages -Version $version
+    if (-not $SkipPackageSchemaTest) {
+        & "$PSScriptRoot/Test-PackageSchema.ps1" -PackageDirectory artifacts/packages -Version $version
+    }
 } finally { Pop-Location }
