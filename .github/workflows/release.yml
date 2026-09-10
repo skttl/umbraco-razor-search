@@ -1,46 +1,63 @@
-name: Release packages
+name: Release RazorSearch packages
 
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+-[a-zA-Z0-9.-]*'
-      - 'v[0-9]+.[0-9]+.[0-9]+'
-
-permissions:
-  contents: write
+      - 'v[0-9]+.[0-9]+.[0-9]'
+      - 'v[0-9]+.[0-9]+.[0-9]-*'
 
 jobs:
   release:
     runs-on: windows-latest
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+
+    env:
+      RELEASE_VERSION: ${{ github.ref_name }}
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-      - uses: actions/setup-node@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: src/Umbraco.Community.RazorSearch/Client/package-lock.json
-      - name: Validate version, build, test and pack
+
+      - name: Validate, build, test and pack
         shell: pwsh
         env:
-          RELEASE_VERSION: ${{ github.ref_name }}
           RAZORSEARCH_TEST_SQLSERVER: 'Server=(localdb)\RazorSearchCI;Database=RazorSearchTests;Integrated Security=True;TrustServerCertificate=True'
         run: |
           sqllocaldb create RazorSearchCI -s
           if ($LASTEXITCODE -ne 0) { throw 'Could not start the isolated SQL Server instance.' }
           ./build/Validate.ps1 -ReleaseVersion $env:RELEASE_VERSION
-      - name: Publish packages
+
+      - name: NuGet login (OIDC)
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Publish packages to NuGet
         shell: pwsh
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
           Get-ChildItem artifacts/packages/*.nupkg | ForEach-Object {
-            dotnet nuget push $_.FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+            dotnet nuget push $_.FullName --api-key '${{ steps.nuget-login.outputs.NUGET_API_KEY }}' --source https://api.nuget.org/v3/index.json --skip-duplicate
             if ($LASTEXITCODE -ne 0) { throw "NuGet push failed for $($_.Name)" }
           }
-      - uses: softprops/action-gh-release@v2
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
           body_path: docs/release-notes.md
           prerelease: ${{ contains(github.ref_name, '-') }}
