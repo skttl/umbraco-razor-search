@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Umbraco.Community.RazorSearch.Examine</RootNamespace>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <WarningsNotAsErrors>NU5104</WarningsNotAsErrors>
+    <WarningsNotAsErrors>NU5104;NU1902;NU1903</WarningsNotAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
