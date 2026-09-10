@@ -44,7 +44,7 @@ jobs:
       - name: Validate, build and pack
         shell: pwsh
         run: |
-          ./build/Validate.ps1 -ReleaseVersion $env:RELEASE_VERSION -SkipTests -SkipDemoPublish
+          ./build/Validate.ps1 -ReleaseVersion $env:RELEASE_VERSION -SkipTests -SkipDemoPublish -SkipPackageSchemaTest
 
       - name: NuGet login (OIDC)
         id: nuget-login

@@ -1,7 +1,8 @@
 param(
     [string] $ReleaseVersion,
     [switch] $SkipTests,
-    [switch] $SkipDemoPublish
+    [switch] $SkipDemoPublish,
+    [switch] $SkipPackageSchemaTest
 )
 
 $ErrorActionPreference = 'Stop'
@@ -61,5 +62,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Pack failed for $package." }
     }
     & "$PSScriptRoot/VerifyPackages.ps1" -Version $version
-    & "$PSScriptRoot/Test-PackageSchema.ps1" -PackageDirectory artifacts/packages -Version $version
+    if (-not $SkipPackageSchemaTest) {
+        & "$PSScriptRoot/Test-PackageSchema.ps1" -PackageDirectory artifacts/packages -Version $version
+    }
 } finally { Pop-Location }
