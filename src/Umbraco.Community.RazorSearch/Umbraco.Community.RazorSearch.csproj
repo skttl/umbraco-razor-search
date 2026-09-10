@@ -28,9 +28,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Umbraco.Cms" Version="[17.6.2,18.0.0)" />
-    <PackageReference Include="Umbraco.Cms.Persistence.EFCore" Version="[17.6.2,18.0.0)" />
-    <PackageReference Include="Umbraco.Cms.Search.Core" Version="[17.1.0,18.0.0)" />
+    <PackageReference Include="Umbraco.Cms" Version="[17.0.0,18.0.0)" />
+    <PackageReference Include="Umbraco.Cms.Persistence.EFCore" Version="[17.0.0,18.0.0)" />
+    <PackageReference Include="Umbraco.Cms.Search.Core" Version="[17.0.0,18.0.0)" />
     <PackageReference Include="AngleSharp" Version="1.8.0" />
     <PackageReference Include="Umbraco.JsonSchema.Extensions" Version="0.4.3" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" PrivateAssets="all" />
