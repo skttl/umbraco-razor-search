@@ -7,6 +7,7 @@
     <RootNamespace>Umbraco.Community.RazorSearch</RootNamespace>
     <StaticWebAssetBasePath>/</StaticWebAssetBasePath>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>NU5104;NU1902;NU1903</WarningsNotAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
