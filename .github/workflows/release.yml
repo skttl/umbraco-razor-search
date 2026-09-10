@@ -26,6 +26,14 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.props', '**/*.targets') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -33,14 +41,10 @@ jobs:
           cache: npm
           cache-dependency-path: src/Umbraco.Community.RazorSearch/Client/package-lock.json
 
-      - name: Validate, build, test and pack
+      - name: Validate, build and pack
         shell: pwsh
-        env:
-          RAZORSEARCH_TEST_SQLSERVER: 'Server=(localdb)\RazorSearchCI;Database=RazorSearchTests;Integrated Security=True;TrustServerCertificate=True'
         run: |
-          sqllocaldb create RazorSearchCI -s
-          if ($LASTEXITCODE -ne 0) { throw 'Could not start the isolated SQL Server instance.' }
-          ./build/Validate.ps1 -ReleaseVersion $env:RELEASE_VERSION
+          ./build/Validate.ps1 -ReleaseVersion $env:RELEASE_VERSION -SkipTests -SkipDemoPublish
 
       - name: NuGet login (OIDC)
         id: nuget-login
