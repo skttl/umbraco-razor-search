@@ -44,7 +44,7 @@ try {
         'src/Umbraco.Community.RazorSearch.Examine/Umbraco.Community.RazorSearch.Examine.csproj'
     }
     dotnet build $buildTarget -c Release -p:Version=$version
-    if ($LASTEXITCODE -ne 0) { throw 'Solution build failed.' }
+    if ($LASTEXITCODE -ne 0) { throw "Build failed for $buildTarget." }
 
     if (-not $SkipTests) {
         dotnet test tests/Umbraco.Community.RazorSearch.Tests/Umbraco.Community.RazorSearch.Tests.csproj -c Release --no-build --no-restore --logger trx
