@@ -56,4 +56,4 @@ Rebuild requires publish permissions and access through the user's start nodes. 
 
 ## Experimental database cannot start
 
-The first beta replaces the unreleased development schema. Use a fresh disposable development database and rebuild snapshots. There is no migration compatibility promise for the earlier unpublished schema.
+The first stable release replaces the unreleased development schema. Use a fresh disposable development database and rebuild snapshots. There is no migration compatibility promise for the earlier unpublished schema.

@@ -102,9 +102,9 @@ The queue, operations and job history live in memory. Restarting loses unfinishe
 
 ## Load balancing
 
-The supported beta topology is one dedicated backoffice server and multiple frontend servers. They share SQL Server and snapshot data but have separate local Examine index directories. SQLite is for single-instance use and is not release-verified in this beta; see the [known limitations](../release-notes.md).
+The supported topology is one dedicated backoffice server and multiple frontend servers. They share SQL Server and snapshot data but have separate local Examine index directories. SQLite is for single-instance use and is not release-verified; see the [known limitations](../release-notes.md).
 
-The backoffice owns render jobs and management operations. Frontends read snapshots and receive index refreshes through Umbraco Search's distributed cache mechanism. RazorSearch leaves `sameOriginOnly` at its default false for this local-index topology. Multiple active backoffice servers are outside the beta scope.
+The backoffice owns render jobs and management operations. Frontends read snapshots and receive index refreshes through Umbraco Search's distributed cache mechanism. RazorSearch leaves `sameOriginOnly` at its default false for this local-index topology. Multiple active backoffice servers are not supported.
 
 Configure an internal render destination on the dedicated backoffice, for example:
 

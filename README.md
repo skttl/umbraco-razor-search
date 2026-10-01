@@ -2,12 +2,12 @@
 
 Search rendered Umbraco pages with Umbraco Search. RazorSearch stores HTML snapshots, extracts title, headings and body text, and contributes them to a dedicated search index.
 
-This branch targets Umbraco 18.1.1+ within 18.x, .NET 10 and Umbraco Search Core 18.1.0+. Use `v17/main` and the 17.x package line for Umbraco 17. The first releases are beta packages. SQLite is not release-verified in this beta; known concurrency limitations are recorded in the release notes.
+This branch targets Umbraco 18.1.1+ within 18.x, .NET 10 and Umbraco Search Core 18.1.0+. Use `v17/main` and the 17.x package line for Umbraco 17. SQLite is not release-verified; known concurrency limitations are recorded in the release notes.
 
 ## Install with Examine
 
 ```powershell
-dotnet add package Umbraco.Community.RazorSearch.Examine --version 18.0.0-beta.1
+dotnet add package Umbraco.Community.RazorSearch.Examine --version 18.0.0
 ```
 
 The companion includes the core package and creates its physical Examine index. Enable Search and the provider in the consuming application's `Program.cs`:
@@ -27,7 +27,7 @@ builder.CreateUmbracoBuilder()
 
 Keep the application's normal Umbraco boot, middleware and endpoint setup. Start the site, then queue a rebuild of existing published content from the RazorSearch backoffice dashboard.
 
-Core is provider-agnostic. It does not call `AddSearchCore()`, register a provider or configure the application's published-content index. For a different provider, install `Umbraco.Community.RazorSearch` directly and configure that provider yourself. Examine is the provider covered by the beta acceptance matrix.
+Core is provider-agnostic. It does not call `AddSearchCore()`, register a provider or configure the application's published-content index. For a different provider, install `Umbraco.Community.RazorSearch` directly and configure that provider yourself. Examine is the provider covered by the release acceptance matrix.
 
 ## Configuration
 
@@ -68,7 +68,7 @@ Rendering and indexing happen asynchronously after publication. Each document an
 
 The render queue and its history live in memory. Restarting the app loses pending work. Run a manual rebuild when necessary, including after changes to templates, shared content or extraction rules.
 
-Load balancing targets one dedicated backoffice server and multiple frontends with a shared SQL Server database and separate local Examine indexes. The backoffice owns rendering; Umbraco Search distributes index refreshes. Configure an internal render destination to avoid a stale frontend or CDN response. Multiple active backoffice servers are outside the beta scope.
+Load balancing targets one dedicated backoffice server and multiple frontends with a shared SQL Server database and separate local Examine indexes. The backoffice owns rendering; Umbraco Search distributes index refreshes. Configure an internal render destination to avoid a stale frontend or CDN response. Multiple active backoffice servers are not supported.
 
 ## Documentation
 
@@ -79,4 +79,4 @@ Load balancing targets one dedicated backoffice server and multiple frontends wi
 - [Troubleshooting](https://github.com/skttl/umbraco-razor-search/blob/main/docs/troubleshooting/README.md)
 - [Customization](https://github.com/skttl/umbraco-razor-search/blob/main/docs/customization/README.md)
 - [Migrating from FullTextSearch](https://github.com/skttl/umbraco-razor-search/blob/main/docs/migrating-from-fulltextsearch/README.md)
-- [Beta release notes](https://github.com/skttl/umbraco-razor-search/blob/main/docs/release-notes.md)
+- [Release notes](https://github.com/skttl/umbraco-razor-search/blob/main/docs/release-notes.md)

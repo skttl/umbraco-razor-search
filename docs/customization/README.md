@@ -85,4 +85,4 @@ The worker resolves the current published route before execution. The request UR
 
 ## Other extension points
 
-Configure CSS/property extraction and trusted highlight markup through [configuration](../configuration/README.md). Custom source types, transforms, raw provider result fields, segments and index aliases are outside the public beta contract. Core remains provider-agnostic.
+Configure CSS/property extraction and trusted highlight markup through [configuration](../configuration/README.md). Custom source types, transforms, raw provider result fields, segments and index aliases are outside the public API contract. Core remains provider-agnostic.

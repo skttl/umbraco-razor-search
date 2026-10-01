@@ -1,6 +1,6 @@
-# First beta
+# First stable release
 
-Release candidates: 18.0.0-beta.1 and 17.0.0-beta.1, for the matching Umbraco major. Publication follows completion of the release acceptance matrix.
+Stable releases: 18.0.0 and 17.0.0, for the matching Umbraco major.
 
 - Search rendered HTML through Umbraco Search, with an optional Examine companion.
 - Store one snapshot per document and culture, preserving the last usable text after a rendering error.
@@ -13,10 +13,8 @@ Release candidates: 18.0.0-beta.1 and 17.0.0-beta.1, for the matching Umbraco ma
 
 ## Limits
 
-SQLite verification is deferred for the first beta. Concurrent rebuild and partial-culture unpublish have produced database lock failures on Umbraco 17, including failures with private cache. SQLite remains available, but these concurrency cases are not release-verified. This limitation is accepted for the beta and is not a claim that the observed failures have been fixed.
+SQLite is not release-verified. Concurrent rebuild and partial-culture unpublish have produced database lock failures on Umbraco 17, including failures with private cache. SQLite remains available, but these concurrency cases are not release-verified. The observed failures remain a known limitation.
 
-The queue is in memory and loses pending work on restart. Rebuild manually after interrupted work or template/shared-content/extraction changes. Multiple active backoffice servers, segments, member-personalized results and dedicated fuzzy/wildcard APIs are outside this beta. The backoffice displays expected index content rather than live provider fields. Other providers require their own verification.
+The queue is in memory and loses pending work on restart. Rebuild manually after interrupted work or template/shared-content/extraction changes. Multiple active backoffice servers, segments, member-personalized results and dedicated fuzzy/wildcard APIs are not supported. The backoffice displays expected index content rather than live provider fields. Other providers require their own verification.
 
 The earlier development API and snapshot schema were never released. Breaking changes are intentional; use a fresh disposable development database instead of expecting an upgrade from that schema.
-
-A successful build alone does not establish release readiness; verify the installed packages and the documented acceptance scenarios before publishing.
