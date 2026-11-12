@@ -18,9 +18,10 @@ try {
         New-Item -ItemType Directory -Path $directory | Out-Null
         $package = if ($kind -eq 'direct') { 'Umbraco.Community.RazorSearch' } else { 'Umbraco.Community.RazorSearch.Examine' }
         $project = Join-Path $directory 'Probe.csproj'
+        # shortcut: Umbraco 19 RC assets fail SDK compression; remove when the CMS package fixes its endpoints.
         @"
 <Project Sdk="Microsoft.NET.Sdk.Web">
-  <PropertyGroup><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <PropertyGroup><TargetFramework>net11.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><CompressionEnabled>false</CompressionEnabled></PropertyGroup>
   <ItemGroup><PackageReference Include="$package" Version="$Version" /></ItemGroup>
 </Project>
 "@ | Set-Content -LiteralPath $project
@@ -49,6 +50,9 @@ try {
         }
         dotnet publish $project --no-restore --verbosity quiet -o (Join-Path $directory 'published')
         if ($LASTEXITCODE -ne 0) { throw "Consumer publish failed for $kind." }
+        if (-not (Test-Path -LiteralPath (Join-Path $directory 'published/wwwroot/App_Plugins/Umbraco.Community.RazorSearch/umbraco-package.json'))) {
+            throw "Published consumer lacks backoffice assets for $kind."
+        }
         Write-Host "$package ${Version}: schema installed, referenced once after repeated build, consumer publishes."
     }
     Write-Host "Schema installation checks passed. Artifacts: $probeRoot"

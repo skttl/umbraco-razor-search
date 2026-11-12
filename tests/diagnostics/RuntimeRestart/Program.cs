@@ -1,8 +1,6 @@
 using Microsoft.AspNetCore.TestHost;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Umbraco.Cms.Search.Core.DependencyInjection;
-using Umbraco.Cms.Search.Provider.Examine.DependencyInjection;
 using Umbraco.Cms.Core.Sync;
 using Umbraco.Community.RazorSearch.Services;
 using Umbraco.Community.RazorSearch.Persistence.Stores;
@@ -15,7 +13,7 @@ using Umbraco.Community.RazorSearch.Models;
 using var diagnosticDeadline = new Timer(_ => { Console.Error.WriteLine("DIAGNOSTIC FAIL: 360 second bounded run exceeded"); Environment.Exit(3); }, null, TimeSpan.FromSeconds(360), Timeout.InfiniteTimeSpan); var builder = WebApplication.CreateBuilder(args); builder.WebHost.UseTestServer(); TestServer? server = null;
 if (!builder.Configuration.GetValue<bool>("Acceptance:Enabled"))
     throw new InvalidOperationException("This test fixture requires Acceptance:Enabled=true and must only run against an isolated test database.");
-builder.CreateUmbracoBuilder().AddBackOffice().AddWebsite().AddComposers().AddSearchCore().AddExamineSearchProvider().Build();
+builder.CreateUmbracoBuilder().AddBackOffice().AddWebsite().AddComposers().Build();
 builder.Services.AddSingleton<IServerRoleAccessor>(new RoleAccessor(Enum.Parse<ServerRole>(builder.Configuration["Acceptance:Role"] ?? "Single")));
 builder.Services.AddHttpClient("RazorSearch.Rendering").ConfigurePrimaryHttpMessageHandler(() => new HoldingHandler(server!.CreateHandler())); var app = builder.Build(); server = app.GetTestServer();
 await app.BootUmbracoAsync(); app.Use(async (context, next) => { context.Connection.RemoteIpAddress = System.Net.IPAddress.Loopback; await next(context); });

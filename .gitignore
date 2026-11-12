@@ -49,3 +49,4 @@ appsettings-schema.*.json
 src/Umbraco.Community.RazorSearch/umbraco-package-schema.json
 tests/**/umbraco-package-schema.json
 src/Umbraco.Community.RazorSearch.Examine/umbraco-package-schema.json
+.dotnet/

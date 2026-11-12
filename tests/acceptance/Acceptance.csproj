@@ -1,11 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
+    <!-- shortcut: Umbraco 19 RC assets fail SDK compression; remove when CMS fixes its endpoints. -->
+    <CompressionEnabled>false</CompressionEnabled>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <UmbracoVersion Condition="'$(UmbracoVersion)' == ''">18.1.1</UmbracoVersion>
-    <RazorSearchVersion Condition="'$(RazorSearchVersion)' == ''">18.0.0-beta.1</RazorSearchVersion>
+    <UmbracoVersion Condition="'$(UmbracoVersion)' == ''">19.0.0-rc1</UmbracoVersion>
+    <RazorSearchVersion Condition="'$(RazorSearchVersion)' == ''">19.0.0-rc.1</RazorSearchVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Umbraco.Cms" Version="$(UmbracoVersion)" />

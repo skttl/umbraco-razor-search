@@ -2,7 +2,7 @@
 
 ## No results
 
-Confirm `AddSearchCore()` and a provider are registered. Examine apps also need the RazorSearch Examine companion to create the physical index. Rebuild existing published content after installation and wait for rendering and the subsequent Search refresh.
+Confirm Umbraco Search and a provider are registered. Umbraco 19 includes Search and the default Examine provider automatically. Examine apps also need the RazorSearch Examine companion to create the physical index. Rebuild existing published content after installation and wait for rendering and the subsequent Search refresh.
 
 Check culture explicitly. No culture searches invariant documents only. `da-DK` searches that configured culture plus invariant documents. `da` does not expand to `da-DK`. Protected and excluded documents are omitted from public results.
 

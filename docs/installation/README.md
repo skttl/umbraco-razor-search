@@ -1,28 +1,32 @@
 # Installation
 
-Use the package line matching the CMS major. `main` targets Umbraco 18.1.1+ and Search Core 18.1.0+. `v17/main` targets Umbraco 17.6.2+ and Search Core 17.1.0+. Both use .NET 10. SQL Server supports single-server and the documented load-balanced topology. SQLite is intended for one app instance but is not release-verified; see the [known limitations](../release-notes.md).
+Use the package line matching the CMS major. `main` targets Umbraco 19.0.0-rc1 and .NET 11. `v18/main` maintains Umbraco 18 and `v17/main` maintains Umbraco 17, both on .NET 10. SQL Server supports single-server and the documented load-balanced topology. SQLite is intended for one app instance but is not release-verified; see the [known limitations](../release-notes.md).
 
 ## Examine application
 
 ```powershell
-dotnet add package Umbraco.Community.RazorSearch.Examine --version 18.0.0
+dotnet add package Umbraco.Community.RazorSearch.Examine --version 19.0.0-rc.1
 ```
 
-The companion installs core transitively. For Umbraco 17 use `17.0.0`.
+The companion installs core transitively. For Umbraco 18 use `18.0.0`; for Umbraco 17 use `17.0.0`.
+
+With Umbraco `19.0.0-rc1` and .NET SDK `11.0.100`, static-asset compression fails with `ApplyCompressionNegotiation` for `app-auth-callback.element.js`, including in a stock CMS app without RazorSearch. Until the CMS fixes its asset endpoints, add this temporary workaround to the consuming application's `.csproj`, as in the demo:
+
+```xml
+<PropertyGroup>
+  <CompressionEnabled>false</CompressionEnabled>
+</PropertyGroup>
+```
 
 A complete `Program.cs`:
 
 ```csharp
-using Umbraco.Cms.Search.Core.DependencyInjection;
-using Umbraco.Cms.Search.Provider.Examine.DependencyInjection;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.CreateUmbracoBuilder()
     .AddBackOffice()
     .AddWebsite()
     .AddComposers()
-    .AddSearchCore()
-    .AddExamineSearchProvider()
     .Build();
 
 WebApplication app = builder.Build();
@@ -41,9 +45,9 @@ app.UseUmbraco()
 await app.RunAsync();
 ```
 
-`AddSearchCore()` is provided by `Umbraco.Cms.Search.Core`. The companion registers the physical RazorSearch Examine index and fields. Your app owns provider registration and any ordinary published-content index configuration.
+Umbraco 19 registers Search and the default Examine provider automatically. The companion registers the physical RazorSearch Examine index and fields. Your app owns any ordinary published-content index configuration.
 
-For another provider, install core directly and replace `AddExamineSearchProvider()` with your provider's setup. Core does not register a provider automatically.
+For another provider, install core directly and follow that provider's Umbraco 19 setup. Core does not register a provider automatically.
 
 ## Build and start
 

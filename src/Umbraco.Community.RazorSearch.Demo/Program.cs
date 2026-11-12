@@ -1,5 +1,3 @@
-using Umbraco.Cms.Search.Core.DependencyInjection;
-using Umbraco.Cms.Search.Provider.Examine.DependencyInjection;
 using Umbraco.Cms.Core.Sync;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -7,9 +5,7 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 var umbracoBuilder = builder.CreateUmbracoBuilder()
     .AddBackOffice()
     .AddWebsite()
-    .AddComposers()
-    .AddSearchCore()
-    .AddExamineSearchProvider();
+    .AddComposers();
 
 // The demo is deliberately a single-server installation. Avoid the startup
 // window where the default server-role election reports Unknown.

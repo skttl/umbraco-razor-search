@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>Umbraco.Community.RazorSearch</RootNamespace>
@@ -29,19 +29,19 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Umbraco.Cms" Version="[18.0.0,19.0.0)" />
-    <PackageReference Include="Umbraco.Cms.Persistence.EFCore" Version="[18.0.0,19.0.0)" />
-    <PackageReference Include="Umbraco.Cms.Search.Core" Version="[18.0.0,19.0.0)" />
+    <PackageReference Include="Umbraco.Cms" Version="[19.0.0-rc1,20.0.0)" />
+    <PackageReference Include="Umbraco.Cms.Persistence.EFCore" Version="[19.0.0-rc1,20.0.0)" />
+    <PackageReference Include="Umbraco.Cms.Search.Core" Version="[19.0.0-rc1,20.0.0)" />
     <PackageReference Include="AngleSharp" Version="1.8.0" />
     <PackageReference Include="Umbraco.JsonSchema.Extensions" Version="0.4.3" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.0.0" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="11.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="11.0.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="11.0.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -52,27 +52,25 @@
   <PropertyGroup>
     <_JsonSchemaFile>appsettings-schema.Umbraco.Community.RazorSearch.json</_JsonSchemaFile>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
-    <!-- Our transitive props adds the schema and imports the SDK's static-web-assets props. -->
-    <StaticWebAssetsDisableProjectBuildTransitivePropsFileGeneration>true</StaticWebAssetsDisableProjectBuildTransitivePropsFileGeneration>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Existing public API is not fully documented; XML docs supply schema descriptions. -->
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <!-- CMS generates these for this project; consumers receive their own copies from CMS. -->
-    <Content Update="appsettings-schema.Umbraco.Cms.json;appsettings-schema.json;umbraco-package-schema.json" Pack="false" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
+    <Content Update="appsettings-schema.Umbraco.Cms.json;appsettings-schema.Umbraco.Cms.Search.Examine.json;appsettings-schema.json;umbraco-package-schema.json" Pack="false" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
     <Content Include="buildTransitive\**" Pack="true" PackagePath="buildTransitive" />
     <Content Remove="$(_JsonSchemaFile)" />
     <Content Include="$(_JsonSchemaFile)" Pack="true" PackagePath="" Visible="false" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
     <Clean Include="$(_JsonSchemaFile)" />
   </ItemGroup>
   <PropertyGroup>
-    <_SchemaFinalizeAssembly>$(MSBuildThisFileDirectory)../../build/SchemaFinalize/bin/$(Configuration)/net10.0/SchemaFinalize.dll</_SchemaFinalizeAssembly>
+    <_SchemaFinalizeAssembly>$(MSBuildThisFileDirectory)../../build/SchemaFinalize/bin/$(Configuration)/net11.0/SchemaFinalize.dll</_SchemaFinalizeAssembly>
   </PropertyGroup>
   <Target Name="GenerateRazorSearchAppsettingsSchema" AfterTargets="CoreCompile" BeforeTargets="CopyUmbracoJsonSchemaFiles;GenerateNuspec" DependsOnTargets="CopyFilesToOutputDirectory"
           Condition="'$(NoBuild)' != 'true'" Inputs="$(TargetPath);$(_SchemaFinalizeAssembly)" Outputs="$(MSBuildProjectDirectory)\$(_JsonSchemaFile)">
     <JsonSchemaGenerate AssemblyPath="$(TargetPath)" TypeName="UmbracoCommunityRazorSearchSchema" OutputPath="$(MSBuildProjectDirectory)\$(_JsonSchemaFile)" />
-    <Exec Command="dotnet &quot;$(_SchemaFinalizeAssembly)&quot; &quot;$(MSBuildProjectDirectory)/$(_JsonSchemaFile)&quot;" />
+    <Exec Command="&quot;$(DOTNET_HOST_PATH)&quot; &quot;$(_SchemaFinalizeAssembly)&quot; &quot;$(MSBuildProjectDirectory)/$(_JsonSchemaFile)&quot;" />
     <ItemGroup>
       <FileWrites Include="$(MSBuildProjectDirectory)\$(_JsonSchemaFile)" />
     </ItemGroup>

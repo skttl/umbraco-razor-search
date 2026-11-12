@@ -1,8 +1,8 @@
 # Contributing to RazorSearch
 
-`main` follows Umbraco 18. `v17/main` maintains 17. When the next major is adopted, branch the previous implementation to `v18/main`, then upgrade `main`. Port common fixes and verify both lines.
+`main` follows Umbraco 19 RC. `v18/main` maintains 18 and `v17/main` maintains 17. Port common fixes and verify each affected line.
 
-Use .NET SDK 10, Node.js 24.13+ and npm 11+. Node can be installed in a local directory; no global toolchain change is required.
+Use .NET SDK 11, Node.js 24.13+ and npm 11+. Node can be installed in a local directory; no global toolchain change is required.
 
 From the repository root:
 

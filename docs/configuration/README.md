@@ -76,4 +76,4 @@ Only successful HTML/XHTML responses become usable snapshots. Cross-origin redir
 
 `HighlightPattern` defaults to `<mark>{0}</mark>` and must contain `{0}`. Extracted text is HTML-encoded before inserting the highlight markup. Configuration is trusted; do not allow site visitors to supply the pattern.
 
-Provider registration is separate. The consuming app must still call `AddSearchCore()` and configure its provider.
+Provider registration is separate from RazorSearch. Umbraco 19 registers Search and its default Examine provider automatically; follow your provider's setup when replacing Examine.

@@ -4,10 +4,9 @@ using Umbraco.Cms.Core;
 using Umbraco.Cms.Core.Events;
 using Umbraco.Cms.Core.Models;
 using Umbraco.Cms.Core.Services;
-using Umbraco.Cms.Search.Core.Extensions;
-using Umbraco.Cms.Search.Core.Models.Indexing;
-using Umbraco.Cms.Search.Core.Notifications;
-using Umbraco.Cms.Search.Core.Services.ContentIndexing;
+using Umbraco.Cms.Core.Search;
+using Umbraco.Cms.Core.Search.Indexing;
+using Umbraco.Cms.Core.Notifications;
 using Umbraco.Community.RazorSearch.Persistence.Models;
 using Umbraco.Community.RazorSearch.Persistence.Stores;
 using Umbraco.Community.RazorSearch.Searching;
@@ -22,10 +21,10 @@ internal sealed class RazorSearchContentIndexChangeStrategy(
 {
     private static readonly HashSet<string> RequiredSystemFieldNames =
     [
-        Umbraco.Cms.Search.Core.Constants.FieldNames.Id,
-        Umbraco.Cms.Search.Core.Constants.FieldNames.ParentId,
-        Umbraco.Cms.Search.Core.Constants.FieldNames.PathIds,
-        Umbraco.Cms.Search.Core.Constants.FieldNames.ContentTypeId,
+        Umbraco.Cms.Core.Constants.Search.FieldNames.Id,
+        Umbraco.Cms.Core.Constants.Search.FieldNames.ParentId,
+        Umbraco.Cms.Core.Constants.Search.FieldNames.PathIds,
+        Umbraco.Cms.Core.Constants.Search.FieldNames.ContentTypeId,
     ];
 
     public async Task HandleAsync(

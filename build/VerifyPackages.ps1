@@ -5,11 +5,11 @@ $packageRoot = Join-Path (Split-Path $PSScriptRoot -Parent) 'artifacts/packages'
 foreach ($id in @('Umbraco.Community.RazorSearch', 'Umbraco.Community.RazorSearch.Examine')) {
     $zip = [IO.Compression.ZipFile]::OpenRead((Join-Path $packageRoot "$id.$Version.nupkg"))
     try {
-        foreach ($required in @('icon.png', 'README.md', "$id.nuspec", "lib/net10.0/$id.dll")) {
+        foreach ($required in @('icon.png', 'README.md', "$id.nuspec", "lib/net11.0/$id.dll")) {
             if (-not $zip.GetEntry($required)) { throw "$id lacks $required" }
         }
         if ($id -eq 'Umbraco.Community.RazorSearch') {
-            foreach ($required in @('appsettings-schema.Umbraco.Community.RazorSearch.json', 'buildTransitive/Umbraco.Community.RazorSearch.props')) {
+            foreach ($required in @('appsettings-schema.Umbraco.Community.RazorSearch.json', 'buildTransitive/Umbraco.Community.RazorSearch.props', 'buildTransitive/Umbraco.Community.RazorSearch.targets', 'buildMultiTargeting/Umbraco.Community.RazorSearch.targets', 'build/Umbraco.Community.RazorSearch.PackageAssets.json')) {
                 if (-not $zip.GetEntry($required)) { throw "$id lacks $required" }
             }
             if (-not @($zip.Entries | Where-Object FullName -Like '*App_Plugins*/umbraco-package.json').Count) {

@@ -4,7 +4,7 @@ using Examine.Lucene.Providers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Umbraco.Cms.Core.Composing;
-using Umbraco.Cms.Infrastructure.Examine;
+using Umbraco.Cms.Search.Provider.Examine.Lucene;
 using Umbraco.Community.RazorSearch.Examine.Configuration;
 
 namespace Umbraco.Community.RazorSearch.Examine.Composing;

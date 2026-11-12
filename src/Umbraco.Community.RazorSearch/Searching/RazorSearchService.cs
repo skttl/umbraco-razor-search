@@ -1,3 +1,4 @@
+using Umbraco.Cms.Core.Extensions;
 using Umbraco.Cms.Core.Services;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core;
@@ -6,11 +7,10 @@ using Umbraco.Cms.Core.Models.PublishedContent;
 using Umbraco.Cms.Core.PublishedCache;
 using Umbraco.Cms.Core.Routing;
 using Umbraco.Cms.Core.Web;
-using Umbraco.Cms.Search.Core.Extensions;
-using Umbraco.Cms.Search.Core.Models.Searching;
-using Umbraco.Cms.Search.Core.Models.Searching.Filtering;
-using Umbraco.Cms.Search.Core.Models.Searching.Sorting;
-using Umbraco.Cms.Search.Core.Services;
+using Umbraco.Cms.Core.Search;
+using Umbraco.Cms.Core.Search.Querying;
+using Umbraco.Cms.Core.Search.Querying.Filtering;
+using Umbraco.Cms.Core.Search.Querying.Sorting;
 using Umbraco.Community.RazorSearch.Configuration;
 using Umbraco.Community.RazorSearch.Models;
 using Umbraco.Community.RazorSearch.Persistence.Models;
@@ -191,7 +191,7 @@ public sealed class RazorSearchService(
         {
             filters.Add(
                 new KeywordFilter(
-                    Umbraco.Cms.Search.Core.Constants.FieldNames.PathIds,
+                    Umbraco.Cms.Core.Constants.Search.FieldNames.PathIds,
                     rootKeyValues,
                     false
                 )

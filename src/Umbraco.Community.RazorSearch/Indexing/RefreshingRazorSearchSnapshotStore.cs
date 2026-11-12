@@ -1,8 +1,7 @@
 using Umbraco.Cms.Core.Services;
 using Umbraco.Community.RazorSearch.Services;
 using Umbraco.Cms.Core.Models;
-using Umbraco.Cms.Search.Core.Models.Indexing;
-using Umbraco.Cms.Search.Core.Services.ContentIndexing;
+using Umbraco.Cms.Core.Search.Indexing;
 using Umbraco.Community.RazorSearch.Persistence.Models;
 using Umbraco.Community.RazorSearch.Persistence.Stores;
 

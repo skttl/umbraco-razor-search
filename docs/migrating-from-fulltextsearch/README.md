@@ -13,7 +13,7 @@ RazorSearch replaces the rendered-page search use case of `Our.Umbraco.FullTextS
 
 1. Remove FullTextSearch and its configuration.
 2. Install the RazorSearch package line matching your CMS major.
-3. Configure `AddSearchCore()` and a provider following [installation](../installation/README.md).
+3. Follow [installation](../installation/README.md). Umbraco 19 includes Search and its default Examine provider automatically.
 4. Replace calling code with the complete async [usage example](../usage/README.md).
 5. Move extraction settings to `Umbraco:Community:RazorSearch:SnapshotExtraction`.
 6. Rebuild snapshots for existing published content and verify each language.

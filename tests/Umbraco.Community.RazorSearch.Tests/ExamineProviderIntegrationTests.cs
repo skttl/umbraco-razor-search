@@ -1,3 +1,4 @@
+using Umbraco.Cms.Core.Extensions;
 using Examine;
 using Examine.Lucene;
 using Examine.Lucene.Directories;
@@ -17,10 +18,8 @@ using Umbraco.Cms.Core.PublishedCache;
 using Umbraco.Cms.Core.Routing;
 using Umbraco.Cms.Core.Services;
 using Umbraco.Cms.Core.Web;
-using Umbraco.Cms.Search.Core.Extensions;
-using Umbraco.Cms.Search.Core.Models.Indexing;
-using Umbraco.Cms.Search.Core.Services;
-using Umbraco.Cms.Search.Core.Services.ContentIndexing;
+using Umbraco.Cms.Core.Search;
+using Umbraco.Cms.Core.Search.Indexing;
 using Umbraco.Cms.Search.Provider.Examine.DependencyInjection;
 using Umbraco.Cms.Search.Provider.Examine.Services;
 using Umbraco.Community.RazorSearch.Configuration;
@@ -174,7 +173,7 @@ public class ExamineProviderIntegrationTests
             var publishedType = Mock.Of<IPublishedContentType>(x => x.Variations == (culture == null ? ContentVariation.Nothing : ContentVariation.Culture));
             _published.Setup(x => x.GetById(id)).Returns(Mock.Of<IPublishedContent>(x => x.Key == id && x.ContentType == publishedType));
             _systemFields.Setup(x => x.GetIndexFieldsAsync(content.Object, It.IsAny<string?[]>(), true, It.IsAny<CancellationToken>()))
-                .ReturnsAsync([new IndexField(Umbraco.Cms.Search.Core.Constants.FieldNames.PathIds,
+                .ReturnsAsync([new IndexField(Umbraco.Cms.Core.Constants.Search.FieldNames.PathIds,
                     new IndexValue { Keywords = [(root ?? id).AsKeyword()] }, null, null)]);
             _protection.Setup(x => x.GetContentProtectionAsync(content.Object)).ReturnsAsync(protection);
             _filter.Setup(x => x.IsExcluded(content.Object, It.IsAny<string?>(), true)).Returns(excluded);

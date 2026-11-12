@@ -1,5 +1,3 @@
-using Umbraco.Cms.Search.Core.DependencyInjection;
-using Umbraco.Cms.Search.Provider.Examine.DependencyInjection;
 using Umbraco.Cms.Core.Sync;
 using Umbraco.Community.RazorSearch.Services;
 using Umbraco.Community.RazorSearch.Persistence.Stores;
@@ -13,7 +11,7 @@ if(args.Contains("--inspect-domain")) { var t=typeof(Umbraco.Cms.Core.Models.Con
 var builder = WebApplication.CreateBuilder(args);
 if (!builder.Configuration.GetValue<bool>("Acceptance:Enabled"))
     throw new InvalidOperationException("This test fixture requires Acceptance:Enabled=true and must only run against an isolated test database.");
-builder.CreateUmbracoBuilder().AddBackOffice().AddWebsite().AddComposers().AddSearchCore().AddExamineSearchProvider().Build();
+builder.CreateUmbracoBuilder().AddBackOffice().AddWebsite().AddComposers().Build();
 builder.Services.AddSingleton<IServerRoleAccessor>(new RoleAccessor(Enum.Parse<ServerRole>(builder.Configuration["Acceptance:Role"] ?? "Single")));
 var app = builder.Build();
 await app.BootUmbracoAsync();

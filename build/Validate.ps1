@@ -19,7 +19,7 @@ try {
             throw "Tag $ReleaseVersion is not a valid NuGet/SemVer version."
         }
     } else {
-        $version = '0.0.0-dev'
+        $version = "$major.0.0-dev"
     }
     if ($version.Split('.')[0] -ne $major) { throw 'Package and Umbraco majors differ.' }
     [xml] $project = Get-Content src/Umbraco.Community.RazorSearch/Umbraco.Community.RazorSearch.csproj
@@ -32,6 +32,8 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'npm ci failed.' }
         npm run check
         if ($LASTEXITCODE -ne 0) { throw 'Client type checking failed.' }
+        npm test
+        if ($LASTEXITCODE -ne 0) { throw 'Client tests failed.' }
         $env:RELEASE_VERSION = $version
         npm run build
         if ($LASTEXITCODE -ne 0) { throw 'Client build failed.' }

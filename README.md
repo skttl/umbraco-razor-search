@@ -2,32 +2,27 @@
 
 Search rendered Umbraco pages with Umbraco Search. RazorSearch stores HTML snapshots, extracts title, headings and body text, and contributes them to a dedicated search index.
 
-This branch targets Umbraco 18.1.1+ within 18.x, .NET 10 and Umbraco Search Core 18.1.0+. Use `v17/main` and the 17.x package line for Umbraco 17. SQLite is not release-verified; known concurrency limitations are recorded in the release notes.
+This branch targets Umbraco 19.0.0-rc1 and .NET 11. Use `v18/main` and the 18.x package line for Umbraco 18, or `v17/main` and the 17.x package line for Umbraco 17. SQLite is not release-verified; known concurrency limitations are recorded in the release notes.
 
 ## Install with Examine
 
 ```powershell
-dotnet add package Umbraco.Community.RazorSearch.Examine --version 18.0.0
+dotnet add package Umbraco.Community.RazorSearch.Examine --version 19.0.0-rc.1
 ```
 
-The companion includes the core package and creates its physical Examine index. Enable Search and the provider in the consuming application's `Program.cs`:
+The companion includes the core package and creates its physical Examine index. Umbraco 19 registers Search and its default Examine provider automatically. Keep the consuming application's normal `Program.cs` setup:
 
 ```csharp
-using Umbraco.Cms.Search.Core.DependencyInjection;
-using Umbraco.Cms.Search.Provider.Examine.DependencyInjection;
-
 builder.CreateUmbracoBuilder()
     .AddBackOffice()
     .AddWebsite()
     .AddComposers()
-    .AddSearchCore()
-    .AddExamineSearchProvider()
     .Build();
 ```
 
 Keep the application's normal Umbraco boot, middleware and endpoint setup. Start the site, then queue a rebuild of existing published content from the RazorSearch backoffice dashboard.
 
-Core is provider-agnostic. It does not call `AddSearchCore()`, register a provider or configure the application's published-content index. For a different provider, install `Umbraco.Community.RazorSearch` directly and configure that provider yourself. Examine is the provider covered by the release acceptance matrix.
+Core is provider-agnostic. It does not register a provider or configure the application's published-content index. For a different provider, install `Umbraco.Community.RazorSearch` directly and configure that provider yourself. Examine is the provider covered by the release acceptance matrix.
 
 ## Configuration
 

@@ -2,7 +2,7 @@ import { UMB_AUTH_CONTEXT } from "@umbraco-cms/backoffice/auth";
 import { UmbControllerBase } from "@umbraco-cms/backoffice/class-api";
 import type { UmbControllerHost } from "@umbraco-cms/backoffice/controller-api";
 import { client as backendApiClient } from "@umbraco-cms/backoffice/external/backend-api";
-import { UmbApiInterceptorController, tryExecute } from "@umbraco-cms/backoffice/resources";
+import { tryExecute } from "@umbraco-cms/backoffice/resources";
 
 interface ManagementApiClient {
   get<T>(options: Record<string, unknown>): Promise<T>;
@@ -12,14 +12,6 @@ interface ManagementApiClient {
 interface TryExecuteResult<T> {
   data?: T | null;
   error?: unknown;
-}
-
-interface ManagementAuthContext {
-  getLatestToken(): Promise<string>;
-  getOpenApiConfiguration(): {
-    base?: string;
-    credentials?: RequestCredentials;
-  };
 }
 
 export interface RazorSearchQueueStatusStreamHandle {
@@ -524,9 +516,6 @@ function normalizeQueuePublishedContentResponse(
 }
 
 export class RazorSearchManagementClient extends UmbControllerBase {
-  readonly #apiInterceptor = new UmbApiInterceptorController(this);
-  #interceptorsBound = false;
-
   constructor(host: UmbControllerHost) {
     super(host);
   }
@@ -543,7 +532,6 @@ export class RazorSearchManagementClient extends UmbControllerBase {
     const response = await tryExecute(
       this,
       client.post<QueueRazorSearchDocumentResponse>({
-        security: [{ scheme: "bearer", type: "http" }],
         url: RAZOR_SEARCH_MANAGEMENT_ENDPOINTS.queueDocument,
         path: { id: documentId },
         body: { includeDescendants } satisfies QueueRazorSearchDocumentRequest,
@@ -569,7 +557,6 @@ export class RazorSearchManagementClient extends UmbControllerBase {
     const response = await tryExecute(
       this,
       client.get<RazorSearchDocumentStatusResponse>({
-        security: [{ scheme: "bearer", type: "http" }],
         url: RAZOR_SEARCH_MANAGEMENT_ENDPOINTS.documentStatus,
         path: { id: documentId },
       }),
@@ -589,7 +576,6 @@ export class RazorSearchManagementClient extends UmbControllerBase {
     const response = await tryExecute(
       this,
       client.get<RazorSearchQueueStatusResponse>({
-        security: [{ scheme: "bearer", type: "http" }],
         url: RAZOR_SEARCH_MANAGEMENT_ENDPOINTS.queueStatus,
       }),
     );
@@ -610,7 +596,6 @@ export class RazorSearchManagementClient extends UmbControllerBase {
     const response = await tryExecute(
       this,
       client.get<RazorSearchQueueBatchDetailsResponse>({
-        security: [{ scheme: "bearer", type: "http" }],
         url: RAZOR_SEARCH_MANAGEMENT_ENDPOINTS.queueBatchDetails,
       }),
     );
@@ -641,7 +626,6 @@ export class RazorSearchManagementClient extends UmbControllerBase {
 
     void this.#consumeQueueStatusStream(
       streamUrl,
-      authContext,
       abortController.signal,
       onStatus,
       onDisconnect,
@@ -665,7 +649,6 @@ export class RazorSearchManagementClient extends UmbControllerBase {
     const response = await tryExecute(
       this,
       client.post<QueueRazorSearchPublishedContentResponse>({
-        security: [{ scheme: "bearer", type: "http" }],
         url: RAZOR_SEARCH_MANAGEMENT_ENDPOINTS.rebuildPublishedContent,
         body: {},
         headers: {
@@ -686,46 +669,29 @@ export class RazorSearchManagementClient extends UmbControllerBase {
       return undefined;
     }
 
-    const openApi = authContext.getOpenApiConfiguration();
-    backendApiClient.setConfig({
-      baseUrl: openApi.base ?? "",
-      credentials: openApi.credentials ?? "same-origin",
-      auth: () => authContext.getLatestToken(),
-    });
-
-    if (!this.#interceptorsBound) {
-      this.#apiInterceptor.bindDefaultInterceptors(
-        backendApiClient as Parameters<UmbApiInterceptorController["bindDefaultInterceptors"]>[0],
-      );
-      this.#interceptorsBound = true;
-    }
+    authContext.configureClient(backendApiClient);
 
     return backendApiClient as unknown as ManagementApiClient;
   }
 
-  async #getAuthContext(): Promise<ManagementAuthContext | undefined> {
-    const authContext = await this.getContext(UMB_AUTH_CONTEXT, {
+  async #getAuthContext() {
+    return this.getContext(UMB_AUTH_CONTEXT, {
       preventTimeout: true,
     });
-
-    return authContext as ManagementAuthContext | undefined;
   }
 
   async #consumeQueueStatusStream(
     streamUrl: string,
-    authContext: ManagementAuthContext,
     signal: AbortSignal,
     onStatus: (status: RazorSearchQueueStatusResponse) => void,
     onDisconnect?: (error?: unknown) => void,
   ) {
     try {
-      const token = await authContext.getLatestToken();
       const response = await fetch(streamUrl, {
         method: "GET",
-        credentials: "same-origin",
+        credentials: "include",
         headers: {
           Accept: "text/event-stream",
-          Authorization: token ? `Bearer ${token}` : "",
         },
         signal,
       });
