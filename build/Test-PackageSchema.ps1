@@ -31,10 +31,11 @@ try {
 <configuration><packageSources><clear/><add key="local" value="$escapedSource"/><add key="nuget.org" value="https://api.nuget.org/v3/index.json"/></packageSources></configuration>
 "@ | Set-Content -LiteralPath (Join-Path $directory 'NuGet.Config')
         # An isolated package cache ensures the tested nupkg is this build, even when the version already exists locally.
-        dotnet restore $project --packages (Join-Path $probeRoot 'packages') --verbosity quiet
+        # Build servers must not retain task DLLs in the temporary cache when it is deleted.
+        dotnet restore $project --disable-build-servers --packages (Join-Path $probeRoot 'packages') --verbosity quiet
         if ($LASTEXITCODE -ne 0) { throw "Package restore failed for $kind." }
         foreach ($build in 1..2) {
-            dotnet build $project --no-restore --verbosity quiet
+            dotnet build $project --disable-build-servers --no-restore --verbosity quiet
             if ($LASTEXITCODE -ne 0) { throw "Consumer build $build failed for $kind." }
             $schemaFile = Join-Path $directory $schemaName
             if (-not (Test-Path -LiteralPath $schemaFile)) { throw "Schema not installed for $kind." }
@@ -48,7 +49,7 @@ try {
             if ($schema.definitions.RazorSearchOptions.additionalProperties -ne $false) { throw 'Schema permits unknown RazorSearch options.' }
             if ($schema.definitions.RazorSearchSnapshotSourceDefinition.oneOf.Count -ne 2) { throw 'Schema lost the selector/property source alternatives.' }
         }
-        dotnet publish $project --no-restore --verbosity quiet -o (Join-Path $directory 'published')
+        dotnet publish $project --disable-build-servers --no-restore --verbosity quiet -o (Join-Path $directory 'published')
         if ($LASTEXITCODE -ne 0) { throw "Consumer publish failed for $kind." }
         if (-not (Test-Path -LiteralPath (Join-Path $directory 'published/wwwroot/App_Plugins/Umbraco.Community.RazorSearch/umbraco-package.json'))) {
             throw "Published consumer lacks backoffice assets for $kind."
