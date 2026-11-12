@@ -5,7 +5,7 @@ Use the package line matching the CMS major. `main` targets Umbraco 19.0.0-rc1 a
 ## Examine application
 
 ```powershell
-dotnet add package Umbraco.Community.RazorSearch.Examine --version 19.0.0-rc.1
+dotnet add package Umbraco.Community.RazorSearch.Examine --version 19.0.0-beta01
 ```
 
 The companion installs core transitively. For Umbraco 18 use `18.0.0`; for Umbraco 17 use `17.0.0`.

@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <UmbracoVersion Condition="'$(UmbracoVersion)' == ''">19.0.0-rc1</UmbracoVersion>
-    <RazorSearchVersion Condition="'$(RazorSearchVersion)' == ''">19.0.0-rc.1</RazorSearchVersion>
+    <RazorSearchVersion Condition="'$(RazorSearchVersion)' == ''">19.0.0-beta01</RazorSearchVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Umbraco.Cms" Version="$(UmbracoVersion)" />

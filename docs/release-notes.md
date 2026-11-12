@@ -1,6 +1,6 @@
-# Umbraco 19 release candidate
+# Umbraco 19 beta
 
-Prepared package version: `19.0.0-rc.1`, targeting Umbraco `19.0.0-rc1` and .NET 11. This is a prerelease compatibility update, not a stable release.
+Package version: `19.0.0-beta01`, targeting Umbraco `19.0.0-rc1` and .NET 11. This is a prerelease compatibility update, not a stable release.
 
 - Preserve Umbraco 18 support on `v18/main` and Umbraco 17 support on `v17/main`.
 - Use the Search contracts now included in `Umbraco.Cms.Core` and the Examine 4 provider.
@@ -10,7 +10,7 @@ Prepared package version: `19.0.0-rc.1`, targeting Umbraco `19.0.0-rc1` and .NET
 
 Back up the database before upgrading an existing site. Umbraco 18 cannot reopen a database upgraded by Umbraco 19. Rebuild search indexes and RazorSearch snapshots after upgrading. Review the [Umbraco 19 upgrade notes](https://docs.umbraco.com/umbraco-cms/19.latest/get-started/upgrading-and-migrating/version-specific), including property editor migrations and imaging key requirements.
 
-Demo startup, database migrations, browser login and rendering against an upgraded database still require manual verification. Automated database access is prohibited by this repository's agent instructions.
+The demo starts after upgrading its database to v19, and its backoffice has been smoke-tested locally. CI passes all 84 C# tests, including database tests, and both client tests. Full rendering and indexing acceptance still requires manual verification.
 
 The RC's static assets fail .NET 11 compression even without RazorSearch. The demo and package probes disable compression; consumers need the [temporary workaround](installation/README.md). The development npm dependency tree also reports existing advisories, including DOMPurify and Vite. Those dependency issues are outside this compatibility update.
 

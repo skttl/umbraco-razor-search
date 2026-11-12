@@ -7,7 +7,7 @@ This branch targets Umbraco 19.0.0-rc1 and .NET 11. Use `v18/main` and the 18.x 
 ## Install with Examine
 
 ```powershell
-dotnet add package Umbraco.Community.RazorSearch.Examine --version 19.0.0-rc.1
+dotnet add package Umbraco.Community.RazorSearch.Examine --version 19.0.0-beta01
 ```
 
 The companion includes the core package and creates its physical Examine index. Umbraco 19 registers Search and its default Examine provider automatically. Keep the consuming application's normal `Program.cs` setup:

@@ -3,7 +3,7 @@
 The companion creates the physical Examine index and field definitions for `Umbraco.Community.RazorSearch`. It includes core transitively and targets the matching Umbraco major.
 
 ```powershell
-dotnet add package Umbraco.Community.RazorSearch.Examine --version 19.0.0-rc.1
+dotnet add package Umbraco.Community.RazorSearch.Examine --version 19.0.0-beta01
 ```
 
 Umbraco 19 registers Search and its default Examine provider automatically. This package does not take over the application's published-content index.
